@@ -1,0 +1,257 @@
+/* Studio Mode editor – TipTap and bilateral layout */
+
+/* ---------------------------------------------------------------------------
+   Page & layout – clear hierarchy so UI doesn’t blend
+   --------------------------------------------------------------------------- */
+.studio-mode {
+  --studio-bg: var(--color-background);
+  --studio-surface: var(--color-surface);
+  --studio-border: rgba(107, 114, 128, 0.2);
+  --studio-border-strong: rgba(107, 114, 128, 0.35);
+  min-height: 100vh;
+  background: var(--studio-bg);
+}
+
+.studio-mode .studio-header {
+  background: var(--studio-surface);
+  border-bottom: 1px solid var(--studio-border-strong);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.studio-mode .studio-main {
+  background: var(--studio-bg);
+}
+
+/* Card stream: each card stands out from background */
+.studio-mode .studio-stream {
+  /* already uses space-y; cards have their own surface */
+}
+
+/* TipTap content area */
+.studio-editor .ProseMirror {
+  outline: none;
+  min-height: 120px;
+  padding: 12px 16px;
+  color: var(--color-text);
+}
+
+.studio-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--color-text-secondary);
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.studio-editor .ProseMirror p.is-editor-empty:first-child:focus::before {
+  opacity: 0.4;
+}
+
+.studio-editor .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.studio-editor .ProseMirror mark {
+  background: rgba(255, 205, 31, 0.4);
+  padding: 0 2px;
+}
+
+/* Pane labels (Term / Definition) so the two sides don’t blend */
+.studio-pane-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  padding: 6px 12px 2px;
+  border-bottom: 1px solid var(--studio-border);
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--studio-surface));
+}
+
+.studio-pane-label[data-pane="def"] {
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--studio-surface));
+}
+
+/* Resizable sash – visible divider between term and definition */
+.studio-sash {
+  width: 10px;
+  background: var(--studio-border);
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.studio-sash::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: color-mix(in srgb, var(--color-primary) 40%, transparent);
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.studio-sash:hover::after,
+.studio-sash[data-resize-panel-drag]::after {
+  opacity: 1;
+}
+
+/* Cards – clear surface, border, and status */
+.studio-card {
+  background: var(--studio-surface) !important;
+  border: 1px solid var(--studio-border-strong) !important;
+  box-shadow: var(--shadow-card);
+}
+
+.studio-card[data-status="saved"] {
+  border-left: 4px solid var(--color-primary) !important;
+}
+
+.studio-card[data-status="unsaved"] {
+  border-left: 4px solid var(--color-warning) !important;
+  animation: studio-pulse-border 1.5s ease-in-out infinite;
+}
+
+.studio-card[data-status="error"] {
+  border-left: 4px solid var(--color-danger) !important;
+}
+
+/* Duplicate term highlight (set-level validation) */
+.studio-card-duplicate,
+.studio-card[data-duplicate-term="true"] {
+  outline: 2px solid var(--color-warning);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--studio-surface)) !important;
+}
+
+@keyframes studio-pulse-border {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Shake for validation (empty term) */
+@keyframes studio-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+.studio-card-shake {
+  animation: studio-shake 0.4s ease-in-out;
+}
+
+/* Card badge (index + drag handle) – always readable */
+.studio-card-badge {
+  background: var(--color-primary) !important;
+  color: white !important;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 80%, black);
+  box-shadow: 0 2px 6px rgba(66, 85, 255, 0.35);
+}
+
+/* Add-card placeholder button – clear CTA */
+.studio-add-card-btn {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--studio-surface));
+  border: 2px dashed var(--studio-border-strong);
+  color: var(--color-text-secondary);
+}
+
+.studio-add-card-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--studio-surface));
+}
+
+/* Sidebar – distinct from main content */
+.studio-sidebar {
+  background: var(--studio-surface) !important;
+  border-left: 1px solid var(--studio-border-strong) !important;
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.06);
+}
+
+.studio-sidebar-tabs {
+  border-bottom: 1px solid var(--studio-border-strong);
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--studio-surface));
+}
+
+.studio-sidebar-tabs button {
+  transition: color 0.15s, background 0.15s;
+}
+
+.studio-sidebar-tabs button:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.studio-sidebar-tabs button[class*="border-b-2"] {
+  background: var(--studio-surface);
+  font-weight: 600;
+}
+
+.studio-sidebar-toggle {
+  background: var(--studio-surface) !important;
+  border: 1px solid var(--studio-border-strong);
+  border-right: none;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Floating format toolbar – use primary so it fits the theme */
+.studio-floating-toolbar {
+  background: var(--color-primary) !important;
+  color: white !important;
+  box-shadow: 0 4px 14px rgba(66, 85, 255, 0.4);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 80%, black);
+}
+
+.studio-floating-toolbar button:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
+}
+
+.studio-floating-toolbar button[data-active="true"] {
+  background: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Slash command menu */
+.studio-slash-menu {
+  z-index: 100;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--studio-border);
+}
+
+/* Inline card editor (Notion-style) – border/box on wrapper in EditableCard */
+.inline-editor .ProseMirror {
+  outline: none;
+  min-height: 22px;
+  padding: 0;
+  color: var(--color-text);
+  font-size: 0.9375rem;
+}
+.inline-editor .ProseMirror:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.inline-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--color-text-secondary);
+  pointer-events: none;
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.inline-editor .ProseMirror p.is-editor-empty:first-child:focus::before {
+  opacity: 0.4;
+}
+
+.inline-editor .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}

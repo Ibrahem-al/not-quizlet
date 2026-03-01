@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/* StudyFlow design system – CSS variables */
+:root {
+  --color-primary: #4255FF;
+  --color-primary-hover: #3A4AE0;
+  --color-success: #59E8B5;
+  --color-warning: #FFCD1F;
+  --color-danger: #FF7878;
+  --color-background: #F6F7FB;
+  --color-surface: #FFFFFF;
+  --color-text: #1A1D28;
+  --color-text-secondary: #6B7280;
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --radius-card: 16px;
+  --radius-button: 8px;
+}
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+  --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-text: var(--color-text);
+  --color-text-secondary: var(--color-text-secondary);
+}
+
+/* Typography */
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 400;
+    color: var(--color-text);
+    background-color: var(--color-background);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 700;
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+  }
+}
+
+/* No CSS transitions for motion – Framer Motion only (springs) */
