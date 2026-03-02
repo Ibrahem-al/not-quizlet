@@ -29,7 +29,7 @@ function findEnvDir(): string | null {
   return null
 }
 
-const trim = (s: string) => (s ?? '').trim()
+const trim = (s?: string) => (s ?? '').trim()
 
 /** Load env: process.env first (Vercel/Netlify/CI), then .env file (local dev) */
 function readEnv(): {
