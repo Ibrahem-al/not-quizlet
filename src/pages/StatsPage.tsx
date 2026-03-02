@@ -81,28 +81,28 @@ export function StatsPage() {
   return (
     <AppLayout breadcrumbs={[{ label: 'Stats' }]}>
       <div className="space-y-8">
-        <h1 className="text-2xl font-bold text-[var(--color-text)]">Analytics</h1>
+        <h1 className="text-2xl font-semibold text-[var(--color-text)]">Analytics</h1>
 
         <section className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-lg border border-[var(--color-text-secondary)]/20 bg-[var(--color-surface)] p-4">
-            <p className="text-sm text-[var(--color-text-secondary)]">Total reviews</p>
-            <p className="text-2xl font-bold text-[var(--color-text)]">{totalReviews}</p>
+          <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] p-5">
+            <p className="text-sm font-medium text-[var(--color-text-secondary)]">Total reviews</p>
+            <p className="text-2xl font-semibold text-[var(--color-text)] mt-1">{totalReviews}</p>
           </div>
-          <div className="rounded-lg border border-[var(--color-text-secondary)]/20 bg-[var(--color-surface)] p-4">
-            <p className="text-sm text-[var(--color-text-secondary)]">Time studied</p>
-            <p className="text-2xl font-bold text-[var(--color-text)]">
+          <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] p-5">
+            <p className="text-sm font-medium text-[var(--color-text-secondary)]">Time studied</p>
+            <p className="text-2xl font-semibold text-[var(--color-text)] mt-1">
               {totalTimeMs >= 60000
                 ? `${(totalTimeMs / 60000).toFixed(1)} min`
                 : `${(totalTimeMs / 1000).toFixed(0)} s`}
             </p>
           </div>
-          <div className="rounded-lg border border-[var(--color-text-secondary)]/20 bg-[var(--color-surface)] p-4">
-            <p className="text-sm text-[var(--color-text-secondary)]">Best streak</p>
-            <p className="text-2xl font-bold text-[var(--color-text)]">{maxStreak} days</p>
+          <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] p-5">
+            <p className="text-sm font-medium text-[var(--color-text-secondary)]">Best streak</p>
+            <p className="text-2xl font-semibold text-[var(--color-text)] mt-1">{maxStreak} days</p>
           </div>
         </section>
 
-        <section>
+        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5 shadow-[var(--shadow-card)]">
           <h2 className="text-lg font-semibold text-[var(--color-text)] mb-3">Reviews by mode</h2>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -126,7 +126,7 @@ export function StatsPage() {
           </div>
         </section>
 
-        <section>
+        <section className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5 shadow-[var(--shadow-card)]">
           <h2 className="text-lg font-semibold text-[var(--color-text)] mb-3">Last 28 days</h2>
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
@@ -140,8 +140,13 @@ export function StatsPage() {
           </div>
         </section>
 
-        <p className="text-sm text-[var(--color-text-secondary)]">
-          <Link to="/" className="underline hover:text-[var(--color-primary)]">Back to Home</Link>
+        <p className="text-sm">
+          <Link
+            to="/"
+            className="text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] font-medium transition-colors"
+          >
+            Back to Home
+          </Link>
         </p>
       </div>
     </AppLayout>

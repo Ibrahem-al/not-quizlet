@@ -4,7 +4,7 @@ import { Sparkles } from 'lucide-react';
 import { Button, Input } from '../components/ui';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useStudyStore } from '../stores/studyStore';
-import { getAIGenerator } from '../lib/ai';
+import { getAIGenerator, getAIUnavailableHint } from '../lib/ai';
 import { uuid } from '../lib/utils';
 import type { Card } from '../types';
 
@@ -61,10 +61,11 @@ export function NewSetPage() {
         });
         navigate(`/sets/${set.id}`);
       } else {
-        setMagicError('AI unavailable or returned no cards. Create the set manually or check Ollama.');
+        setMagicError(`AI unavailable or returned no cards. ${getAIUnavailableHint()}`);
       }
-    } catch {
-      setMagicError('AI unavailable – using manual mode.');
+    } catch (err) {
+      const hint = getAIUnavailableHint();
+      setMagicError(err instanceof Error ? `${err.message}. ${hint}` : `AI failed. ${hint}`);
     } finally {
       setMagicLoading(false);
     }
@@ -73,7 +74,7 @@ export function NewSetPage() {
   return (
     <AppLayout breadcrumbs={[{ label: 'New set' }]}>
       <div className="max-w-lg">
-        <h1 className="text-2xl font-bold text-[var(--color-text)] mb-6">
+        <h1 className="text-2xl font-semibold text-[var(--color-text)] mb-6">
           Create new set
         </h1>
         <div className="space-y-4">
@@ -89,7 +90,7 @@ export function NewSetPage() {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Optional description"
           />
-          <div className="flex gap-2">
+          <div className="flex gap-2 pt-1">
             <Button variant="secondary" onClick={() => navigate('/')}>
               Cancel
             </Button>
@@ -98,18 +99,19 @@ export function NewSetPage() {
             </Button>
           </div>
 
-          <div className="border-t border-[var(--color-text-secondary)]/20 pt-4 mt-6">
+          <div className="border-t border-[var(--color-border)] pt-6 mt-6">
             <button
               type="button"
-              className="flex items-center gap-2 text-sm font-medium text-[var(--color-text)] hover:text-[var(--color-primary)]"
+              className="flex items-center gap-2 text-sm font-medium text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors rounded-[var(--radius-sm)] py-1 -my-1 px-1 -mx-1"
               onClick={() => setMagicExpanded((e) => !e)}
               aria-expanded={magicExpanded}
             >
-              <Sparkles className="w-4 h-4" /> Create with AI (Magic Create)
+              <Sparkles className="w-4 h-4 shrink-0" />
+              Create with AI (Magic Create)
             </button>
             {magicExpanded && (
-              <div className="mt-3 space-y-2">
-                <p className="text-xs text-[var(--color-text-secondary)]">
+              <div className="mt-4 space-y-3 p-4 rounded-[var(--radius-card)] bg-[var(--color-primary-muted)]/30 border border-[var(--color-border)]">
+                <p className="text-sm text-[var(--color-text-secondary)]">
                   Enter a topic; AI will generate flashcards (requires Ollama or cloud AI).
                 </p>
                 <Input

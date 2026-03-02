@@ -9,7 +9,7 @@ import { X, ImagePlus, Loader2 } from 'lucide-react';
 import { Button } from '../ui';
 import { recognizeText } from '../../lib/ocr';
 import { parseImportText } from '../../lib/importText';
-import { getAIGenerator } from '../../lib/ai';
+import { getAIGenerator, getAIUnavailableHint } from '../../lib/ai';
 import type { ParsedCard } from '../../lib/importText';
 
 interface PhotoImportModalProps {
@@ -115,12 +115,12 @@ export function PhotoImportModal({
         setPreviewPairs(cards.map((c) => ({ term: c.term, definition: c.definition })));
         onToast?.('AI extracted card pairs');
       } else {
-        onToast?.('AI unavailable – using manual split');
+        onToast?.(`AI unavailable – using manual split. ${getAIUnavailableHint()}`);
         const parsed = parseImportText(extractedText);
         setPreviewPairs(parsed.length > 0 ? parsed : [{ term: 'Imported', definition: extractedText.slice(0, 300) }]);
       }
-    } catch {
-      setError('AI extraction failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI extraction failed');
       const parsed = parseImportText(extractedText);
       setPreviewPairs(parsed.length > 0 ? parsed : [{ term: 'Imported', definition: extractedText.slice(0, 300) }]);
     } finally {

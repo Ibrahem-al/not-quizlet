@@ -57,16 +57,19 @@ export function ConfirmModal({
       aria-modal="true"
       aria-labelledby="confirm-modal-title"
     >
-      <div
-        className="absolute inset-0 bg-black/40"
+      <motion.div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
         onClick={onCancel}
         aria-hidden
       />
       <motion.div
-        className="relative bg-[var(--color-surface)] rounded-[var(--radius-card)] p-6 shadow-lg max-w-sm w-full"
-        initial={{ opacity: 0, scale: 0.95 }}
+        className="relative bg-[var(--color-surface)] rounded-[var(--radius-card)] p-6 border border-[var(--color-border)] shadow-[var(--shadow-modal)] max-w-sm w-full"
+        initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
+        exit={{ opacity: 0, scale: 0.96 }}
         transition={spring}
         onClick={(e) => e.stopPropagation()}
       >

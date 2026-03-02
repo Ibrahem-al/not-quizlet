@@ -177,7 +177,7 @@ export function EditableCard({
   return (
     <motion.li
       layout
-      className="group/card relative rounded-lg border border-[var(--color-text-secondary)]/20 bg-[var(--color-surface)] shadow-sm hover:border-[var(--color-text-secondary)]/35 focus-within:border-[var(--color-primary)]/50 focus-within:ring-1 focus-within:ring-[var(--color-primary)]/30 transition-colors"
+      className="group/card relative rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] hover:border-[var(--color-text-secondary)]/25 focus-within:border-[var(--color-border-focus)] focus-within:ring-1 focus-within:ring-[var(--color-primary)]/20 transition-colors duration-[var(--duration-fast)]"
     >
       <div className="flex items-stretch min-h-[52px]">
         {dragHandleProps && (
@@ -197,7 +197,7 @@ export function EditableCard({
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] mb-1" aria-hidden>
               Term
             </span>
-            <div className="min-h-[36px] rounded-md border border-[var(--color-text-secondary)]/30 bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-primary)] transition-colors">
+            <div className="min-h-[36px] rounded-[var(--radius-button)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]">
               <EditorContent editor={termEditor} />
             </div>
           </div>
@@ -222,7 +222,7 @@ export function EditableCard({
                 AI
               </span>
             )}
-            <div className="min-h-[36px] rounded-md border border-[var(--color-text-secondary)]/30 bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-primary)] transition-colors">
+            <div className="min-h-[36px] rounded-[var(--radius-button)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]">
               <EditorContent editor={defEditor} />
             </div>
           </div>

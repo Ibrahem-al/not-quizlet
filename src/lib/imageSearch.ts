@@ -190,9 +190,9 @@ async function searchGoogleImages(query: string, page = 1, perPage = 10): Promis
   });
   const res = await fetch(`https://customsearch.googleapis.com/customsearch/v1?${params}`);
   if (!res.ok) {
-    const err = await res.text();
     if (res.status === 429) throw new Error('RATE_LIMIT');
-    throw new Error(`Google search error: ${res.status}`);
+    const body = await res.text();
+    throw new Error(`Google search error: ${res.status}: ${body.slice(0, 100)}`);
   }
   const data = (await res.json()) as {
     items?: Array<{
@@ -248,7 +248,7 @@ async function searchWikimedia(query: string, limit = 12): Promise<ImageResult[]
   });
 }
 
-async function searchBing(query: string, page = 1, perPage = 9): Promise<ImageResult[]> {
+async function searchBing(query: string, page = 1, _perPage = 9): Promise<ImageResult[]> {
   if (!BING_API_KEY) return [];
   const count = 12; // Bing API uses count=12 per request
   const offset = (page - 1) * count;

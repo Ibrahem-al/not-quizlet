@@ -5,18 +5,20 @@
 
 import type { AIGenerator, QuizQuestion, MagicCreateResult, GeneratedCard } from '../types';
 import type { Card } from '../../../types';
+import { getActiveOllamaModel } from '../ollamaConfig';
 
 const OLLAMA_BASE = 'http://localhost:11434';
 
 async function ollamaGenerate(
   prompt: string,
-  options?: { system?: string; json?: boolean }
+  options?: { system?: string; json?: boolean; model?: string }
 ): Promise<string> {
+  const model = options?.model ?? getActiveOllamaModel();
   const res = await fetch(`${OLLAMA_BASE}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'llama3.2',
+      model,
       prompt,
       stream: false,
       system: options?.system,

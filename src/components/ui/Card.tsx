@@ -11,7 +11,7 @@ export function Card({ children, className = '', ...props }: CardProps) {
     <motion.div
       className={`rounded-[var(--radius-card)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] p-4 md:p-6 ${className}`}
       initial={false}
-      whileHover={{ scale: 1.02, boxShadow: '0 12px 32px rgba(0,0,0,0.12)' }}
+      whileHover={{ scale: 1.01, boxShadow: 'var(--shadow-card-hover)' }}
       transition={spring}
       {...props}
     >

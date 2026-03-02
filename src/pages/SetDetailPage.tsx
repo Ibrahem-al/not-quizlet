@@ -152,10 +152,14 @@ export function SetDetailPage() {
 
   if (!set) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-[var(--color-text-secondary)]">Set not found.</p>
-        <Link to="/"><Button variant="secondary">Home</Button></Link>
-      </div>
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
+          <p className="text-[var(--color-text-secondary)]">Set not found.</p>
+          <Link to="/">
+            <Button variant="secondary">Back to Home</Button>
+          </Link>
+        </div>
+      </AppLayout>
     );
   }
 
@@ -207,17 +211,27 @@ export function SetDetailPage() {
         {/* Inline editable title & description */}
         <div>
           {editingMeta ? (
-            <div className="space-y-2">
-              <Input value={titleEdit} onChange={(e) => setTitleEdit(e.target.value)} placeholder="Set title" />
-              <Input value={descriptionEdit} onChange={(e) => setDescriptionEdit(e.target.value)} placeholder="Description" />
+            <div className="space-y-3">
+              <Input
+                value={titleEdit}
+                onChange={(e) => setTitleEdit(e.target.value)}
+                placeholder="Set title"
+              />
+              <Input
+                value={descriptionEdit}
+                onChange={(e) => setDescriptionEdit(e.target.value)}
+                placeholder="Description"
+              />
               <div className="flex gap-2">
-                <Button variant="secondary" onClick={() => setEditingMeta(false)}>Cancel</Button>
+                <Button variant="secondary" onClick={() => setEditingMeta(false)}>
+                  Cancel
+                </Button>
                 <Button onClick={handleSaveMeta}>Done</Button>
               </div>
             </div>
           ) : (
             <div
-              className="cursor-text"
+              className="cursor-text rounded-[var(--radius-sm)] -mx-1 px-1 py-0.5 hover:bg-[var(--color-primary-muted)]/50 transition-colors"
               onClick={() => {
                 setTitleEdit(displaySet.title);
                 setDescriptionEdit(displaySet.description);
@@ -225,22 +239,31 @@ export function SetDetailPage() {
               }}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && (setTitleEdit(displaySet.title), setDescriptionEdit(displaySet.description), setEditingMeta(true))}
+              onKeyDown={(e) =>
+                e.key === 'Enter' &&
+                (setTitleEdit(displaySet.title), setDescriptionEdit(displaySet.description), setEditingMeta(true))
+              }
             >
-              <h1 className="text-2xl font-bold text-[var(--color-text)] hover:bg-[var(--color-text-secondary)]/5 rounded px-1 -mx-1">
+              <h1 className="text-2xl font-semibold text-[var(--color-text)]">
                 {displaySet.title || 'Untitled set'}
               </h1>
-              <p className="text-[var(--color-text-secondary)] mt-1 hover:bg-[var(--color-text-secondary)]/5 rounded px-1 -mx-1">
+              <p className="text-[var(--color-text-secondary)] text-sm mt-1">
                 {displaySet.description || 'Add a description...'}
               </p>
             </div>
           )}
-          <div className="flex flex-wrap gap-2 mt-2">
+          <div className="flex flex-wrap gap-2 mt-3">
             {displaySet.tags.map((tag) => (
               <Badge key={tag}>{tag}</Badge>
             ))}
-            <Button variant="ghost" onClick={() => setShowDeleteConfirm(true)} aria-label="Delete set">
-              <Trash2 className="w-4 h-4" /> Delete set
+            <Button
+              variant="ghost"
+              onClick={() => setShowDeleteConfirm(true)}
+              aria-label="Delete set"
+              className="gap-2 text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+            >
+              <Trash2 className="w-4 h-4 shrink-0" />
+              Delete set
             </Button>
           </div>
         </div>
@@ -248,15 +271,17 @@ export function SetDetailPage() {
         {/* Study modes */}
         {cards.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold text-[var(--color-text)] mb-3">Choose a study mode</h2>
+            <h2 className="text-lg font-semibold text-[var(--color-text)] mb-3">
+              Choose a study mode
+            </h2>
             {!canStartStudying && minCardsError && (
-              <div className="mb-3 rounded-lg border border-[var(--color-warning)]/50 bg-[var(--color-warning)]/10 px-4 py-3 text-sm text-[var(--color-text)]">
+              <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-4 py-3 text-sm text-[var(--color-text)]">
                 <p className="font-medium">{minCardsError.message}</p>
                 <p className="mt-1 text-[var(--color-text-secondary)]">Add another card below.</p>
               </div>
             )}
             {duplicateTermsError && (
-              <div className="mb-3 rounded-lg border border-[var(--color-warning)]/50 bg-[var(--color-warning)]/10 px-4 py-3 text-sm text-[var(--color-text)]">
+              <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-4 py-3 text-sm text-[var(--color-text)]">
                 <p>{duplicateTermsError.message}</p>
               </div>
             )}
@@ -264,17 +289,23 @@ export function SetDetailPage() {
               {modes.map(({ path, label, icon: Icon, description }) =>
                 canStartStudying ? (
                   <Link key={path} to={`/sets/${displaySet.id}/study/${path}`}>
-                    <Card className="flex flex-col items-center gap-2 py-4 hover:bg-[var(--color-background)] min-h-[44px] justify-center">
-                      <Icon className="w-8 h-8 text-[var(--color-primary)]" />
+                    <Card className="flex flex-col items-center gap-2 py-5 min-h-[100px] justify-center text-center">
+                      <Icon className="w-8 h-8 text-[var(--color-primary)] shrink-0" />
                       <span className="text-sm font-medium text-[var(--color-text)]">{label}</span>
-                      <span className="text-xs text-[var(--color-text-secondary)] text-center px-1">{description}</span>
+                      <span className="text-xs text-[var(--color-text-secondary)] px-2">
+                        {description}
+                      </span>
                     </Card>
                   </Link>
                 ) : (
-                  <div key={path} className="flex flex-col items-center gap-2 py-4 rounded-[var(--radius-card)] border border-[var(--color-text-secondary)]/20 bg-[var(--color-surface)] opacity-75 cursor-not-allowed" aria-disabled="true">
-                    <Icon className="w-8 h-8 text-[var(--color-text-secondary)]" />
+                  <div
+                    key={path}
+                    className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] opacity-60 cursor-not-allowed text-center min-h-[100px] justify-center"
+                    aria-disabled="true"
+                  >
+                    <Icon className="w-8 h-8 text-[var(--color-text-secondary)] shrink-0" />
                     <span className="text-sm font-medium text-[var(--color-text-secondary)]">{label}</span>
-                    <span className="text-xs text-[var(--color-text-secondary)] text-center px-1">{description}</span>
+                    <span className="text-xs text-[var(--color-text-secondary)] px-2">{description}</span>
                   </div>
                 )
               )}
@@ -306,12 +337,12 @@ export function SetDetailPage() {
           </div>
 
           {importExpanded && (
-            <div className="mb-4 p-3 rounded-lg border border-[var(--color-text-secondary)]/20 space-y-2">
+            <div className="mb-4 p-4 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3">
               <p className="text-sm text-[var(--color-text-secondary)]">
                 One per line: &quot;term - definition&quot; or tab-separated
               </p>
               <textarea
-                className="w-full min-h-[80px] rounded-[var(--radius-button)] border border-[var(--color-text-secondary)]/30 bg-[var(--color-surface)] px-3 py-2 text-sm"
+                className="w-full min-h-[80px] rounded-[var(--radius-button)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                 placeholder="Hola - Hello&#10;Gracias - Thank you"
                 value={importText}
                 onChange={(e) => { setImportText(e.target.value); setImportParseError(false); }}
@@ -354,9 +385,10 @@ export function SetDetailPage() {
           <button
             type="button"
             onClick={() => handleAddCard()}
-            className="mt-3 w-full rounded-lg border-2 border-dashed border-[var(--color-text-secondary)]/30 py-6 flex items-center justify-center gap-2 text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+            className="mt-4 w-full rounded-[var(--radius-card)] border-2 border-dashed border-[var(--color-border)] py-6 flex items-center justify-center gap-2 text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/30 transition-all duration-[var(--duration-normal)]"
           >
-            <Plus className="w-5 h-5" /> Add card (or press Enter in definition)
+            <Plus className="w-5 h-5 shrink-0" />
+            Add card (or press Enter in definition)
           </button>
         </section>
       </div>
@@ -368,10 +400,10 @@ export function SetDetailPage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-text-secondary)]/20 px-3 py-2 shadow-lg text-sm text-[var(--color-text-secondary)]"
+            className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-[var(--radius-card)] bg-[var(--color-surface)] border border-[var(--color-border)] px-4 py-2.5 shadow-[var(--shadow-modal)] text-sm text-[var(--color-text-secondary)]"
           >
-            {saveStatus === 'saving' && <span className="animate-pulse">Saving...</span>}
-            {saveStatus === 'saved' && <span className="text-[var(--color-success)]">All changes saved</span>}
+            {saveStatus === 'saving' && <span className="animate-pulse">Saving…</span>}
+            {saveStatus === 'saved' && <span className="text-[var(--color-success)] font-medium">Saved</span>}
           </motion.div>
         )}
       </AnimatePresence>

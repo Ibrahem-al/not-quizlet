@@ -14,14 +14,14 @@ export function Button({
   ...props
 }: ButtonProps) {
   const base =
-    'inline-flex items-center justify-center gap-2 rounded-[var(--radius-button)] font-medium px-4 py-2 min-h-[40px] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none';
+    'inline-flex items-center justify-center gap-2 rounded-[var(--radius-button)] font-medium px-4 py-2 min-h-[40px] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none transition-colors duration-[var(--duration-fast)]';
   const variants = {
     primary:
       'bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)]',
     secondary:
-      'bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-text-secondary)]/30 shadow-sm',
-    danger: 'bg-[var(--color-danger)] text-white',
-    ghost: 'bg-transparent text-[var(--color-text)] hover:bg-black/5',
+      'bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] hover:border-[var(--color-text-secondary)]/40',
+    danger: 'bg-[var(--color-danger)] text-white hover:opacity-95',
+    ghost: 'bg-transparent text-[var(--color-text)] hover:bg-[var(--color-primary-muted)]',
   };
 
   return (

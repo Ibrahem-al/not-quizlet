@@ -30,9 +30,9 @@ export function SignUpPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-[var(--radius-card)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] p-6">
-        <h1 className="text-xl font-bold text-[var(--color-text)] mb-1">Create account</h1>
+    <div className="min-h-screen bg-[var(--color-background)] flex flex-col items-center justify-center px-4 py-8">
+      <div className="w-full max-w-sm rounded-[var(--radius-card)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] border border-[var(--color-border)] p-6 sm:p-8">
+        <h1 className="text-xl font-semibold text-[var(--color-text)] mb-1">Create account</h1>
         <p className="text-sm text-[var(--color-text-secondary)] mb-6">
           Save your flashcards to the cloud and access them anywhere.
         </p>
@@ -60,10 +60,21 @@ export function SignUpPage() {
             {loading ? 'Creating account…' : 'Sign up'}
           </Button>
         </form>
-        <p className="mt-4 text-sm text-[var(--color-text-secondary)] text-center">
+        <p className="mt-5 text-sm text-[var(--color-text-secondary)] text-center">
           Already have an account?{' '}
-          <Link to="/signin" className="text-[var(--color-primary)] font-medium hover:underline">
+          <Link
+            to="/signin"
+            className="text-[var(--color-primary)] font-medium hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 rounded"
+          >
             Sign in
+          </Link>
+        </p>
+        <p className="mt-3 text-center">
+          <Link
+            to="/"
+            className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] transition-colors"
+          >
+            ← Back to Home
           </Link>
         </p>
       </div>

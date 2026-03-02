@@ -15,7 +15,7 @@ interface AuthActions {
   signOut: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState & AuthActions>((set, get) => ({
+export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   user: null,
   session: null,
   initialized: false,

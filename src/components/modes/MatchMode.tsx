@@ -68,8 +68,8 @@ export function MatchMode({ cards, onExit }: MatchModeProps) {
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <header className="flex items-center justify-between p-4 border-b border-[var(--color-text-secondary)]/20 bg-[var(--color-surface)]">
+    <div className="flex flex-col min-h-screen bg-[var(--color-background)]">
+      <header className="flex items-center justify-between p-4 sm:px-6 border-b border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)]">
         <Timer running={running} className="text-lg" />
         <span className="font-mono text-sm text-[var(--color-text-secondary)]">
           {matchedCount} / {pairCount} pairs

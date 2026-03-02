@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Settings, FileInput, Sparkles, BarChart3, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Button, Input } from '../ui';
 import { useEditorStore } from '../../stores/editorStore';
-import { getAIGenerator } from '../../lib/ai';
+import { getAIGenerator, getAIUnavailableHint } from '../../lib/ai';
 import { parseImportText } from '../../lib/importText';
 
 const TAB_IDS = ['settings', 'import', 'generate', 'stats'] as const;
@@ -69,10 +69,11 @@ export function AISidebar({ open, onToggle, onToast }: AISidebarProps) {
         onToast?.('Cards generated');
         setGenerateTopic('');
       } else {
-        onToast?.('AI unavailable or returned no cards');
+        onToast?.(`AI unavailable. ${getAIUnavailableHint()}`);
       }
-    } catch {
-      onToast?.('AI failed');
+    } catch (err) {
+      const hint = getAIUnavailableHint();
+      onToast?.(err instanceof Error ? `${err.message}. ${hint}` : `AI failed. ${hint}`);
     } finally {
       setGenerateLoading(false);
     }

@@ -149,8 +149,8 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
   }
 
   return (
-    <div className="flex flex-col min-h-screen max-w-2xl mx-auto">
-      <header className="p-4 border-b border-[var(--color-text-secondary)]/20 flex justify-between items-center">
+    <div className="flex flex-col min-h-screen max-w-2xl mx-auto bg-[var(--color-background)]">
+      <header className="p-4 sm:px-6 border-b border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] flex justify-between items-center">
         <span className="font-mono text-sm text-[var(--color-text-secondary)]">
           {progress}
         </span>
