@@ -29,36 +29,38 @@ function findEnvDir(): string | null {
   return null
 }
 
-/** Load .env with dotenv parser; try UTF-8 then UTF-16 so encoding is never wrong */
+const trim = (s: string) => (s ?? '').trim()
+
+/** Load env: process.env first (Vercel/Netlify/CI), then .env file (local dev) */
 function readEnv(): {
   supabaseUrl: string
   supabaseAnonKey: string
   ollamaEnabled: string
   ollamaModel: string
 } {
+  const fromProcess = {
+    supabaseUrl: trim(process.env.VITE_SUPABASE_URL ?? ''),
+    supabaseAnonKey: trim(process.env.VITE_SUPABASE_ANON_KEY ?? ''),
+    ollamaEnabled: /^(true|1)$/i.test(trim(process.env.VITE_OLLAMA_ENABLED ?? '')) ? 'true' : 'false',
+    ollamaModel: trim(process.env.VITE_OLLAMA_MODEL) || 'llama3.2',
+  }
+  if (fromProcess.supabaseUrl && fromProcess.supabaseAnonKey) return fromProcess
+
   const envDir = findEnvDir()
-  if (!envDir) return { supabaseUrl: '', supabaseAnonKey: '', ollamaEnabled: 'false', ollamaModel: 'llama3.2' }
+  if (!envDir) return fromProcess
   const envPath = path.join(envDir, '.env')
-  let raw: string
   try {
-    raw = fs.readFileSync(envPath, 'utf-8')
-  } catch {
-    return { supabaseUrl: '', supabaseAnonKey: '', ollamaEnabled: 'false', ollamaModel: 'llama3.2' }
-  }
-  if (!raw.includes('VITE_')) {
-    try {
-      raw = fs.readFileSync(envPath, 'utf16le')
-    } catch {
-      return { supabaseUrl: '', supabaseAnonKey: '', ollamaEnabled: 'false', ollamaModel: 'llama3.2' }
+    let raw = fs.readFileSync(envPath, 'utf-8')
+    if (!raw.includes('VITE_')) raw = fs.readFileSync(envPath, 'utf16le')
+    const parsed = parseDotenv(raw)
+    return {
+      supabaseUrl: trim(parsed.VITE_SUPABASE_URL) || fromProcess.supabaseUrl,
+      supabaseAnonKey: trim(parsed.VITE_SUPABASE_ANON_KEY) || fromProcess.supabaseAnonKey,
+      ollamaEnabled: /^(true|1)$/i.test(trim(parsed.VITE_OLLAMA_ENABLED)) ? 'true' : fromProcess.ollamaEnabled,
+      ollamaModel: trim(parsed.VITE_OLLAMA_MODEL) || fromProcess.ollamaModel,
     }
-  }
-  const parsed = parseDotenv(raw)
-  const trim = (s: string) => (s ?? '').trim()
-  return {
-    supabaseUrl: trim(parsed.VITE_SUPABASE_URL),
-    supabaseAnonKey: trim(parsed.VITE_SUPABASE_ANON_KEY),
-    ollamaEnabled: /^(true|1)$/i.test(trim(parsed.VITE_OLLAMA_ENABLED)) ? 'true' : 'false',
-    ollamaModel: trim(parsed.VITE_OLLAMA_MODEL) || 'llama3.2',
+  } catch {
+    return fromProcess
   }
 }
 
