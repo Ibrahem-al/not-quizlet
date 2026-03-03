@@ -5,10 +5,13 @@ import { Search, Download, Upload, MoreVertical, BarChart3, BookOpen, Layers } f
 import { Card, Button } from '../components/ui';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { AppLayout, NewSetButton } from '../components/layout/AppLayout';
+import { FolderSidebar } from '../components/folders/FolderSidebar';
 import { useStudyStore } from '../stores/studyStore';
+import { useFolderStore } from '../stores/folderStore';
 
 export function HomePage() {
   const { sets, loadSets, loadSettings, loaded } = useStudyStore();
+  const { currentFolderId, setCurrentFolder, loadFolders } = useFolderStore();
   const [search, setSearch] = useState('');
   const [importFile, setImportFile] = useState<HTMLInputElement | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -17,7 +20,8 @@ export function HomePage() {
   useEffect(() => {
     loadSets();
     loadSettings();
-  }, [loadSets, loadSettings]);
+    loadFolders();
+  }, [loadSets, loadSettings, loadFolders]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -27,18 +31,24 @@ export function HomePage() {
     return () => document.removeEventListener('click', close);
   }, []);
 
+  // Filter by folder first, then search
+  const setsInFolder = useMemo(() => {
+    if (!currentFolderId) return sets;
+    return sets.filter((s) => s.folderId === currentFolderId);
+  }, [sets, currentFolderId]);
+
   const fuse = useMemo(
     () =>
-      new Fuse(sets, {
+      new Fuse(setsInFolder, {
         keys: ['title', 'tags', 'cards.term'],
         threshold: 0.3,
       }),
-    [sets]
+    [setsInFolder]
   );
   const filteredSets = useMemo(() => {
-    if (!search.trim()) return sets;
+    if (!search.trim()) return setsInFolder;
     return fuse.search(search).map((r) => r.item);
-  }, [sets, search, fuse]);
+  }, [setsInFolder, search, fuse]);
 
   const handleExport = useCallback(() => {
     const data = JSON.stringify(sets, null, 2);
@@ -154,7 +164,10 @@ export function HomePage() {
   );
 
   return (
-    <AppLayout headerRight={headerRight}>
+    <AppLayout 
+      headerRight={headerRight}
+      sidebar={<FolderSidebar currentFolderId={currentFolderId} onFolderSelect={setCurrentFolder} />}
+    >
       {!loaded ? (
         <div className="grid gap-4 sm:grid-cols-2">
           {[1, 2, 3].map((i) => (

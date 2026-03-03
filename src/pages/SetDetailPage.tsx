@@ -12,10 +12,14 @@ import {
   AlertCircle,
   MoreVertical,
   Edit3,
+  Folder,
 } from 'lucide-react';
 import { useDebouncedCallback } from 'use-debounce';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, Button, Input, Badge } from '../components/ui';
+import { ShareButton } from '../components/sharing/ShareButton';
+import { PermissionBadge } from '../components/sharing/PermissionBadge';
+import { MoveToFolderDialog } from '../components/folders/MoveToFolderDialog';
 import { AppLayout } from '../components/layout/AppLayout';
 import { Toast } from '../components/ui/Toast';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
@@ -23,6 +27,8 @@ import { EditableCard } from '../components/inline';
 import { useStudySet } from '../hooks/useStudySet';
 import { useSetPattern } from '../hooks/useSetPattern';
 import { useStudyStore } from '../stores/studyStore';
+import { useAuthStore } from '../stores/authStore';
+import { useTranslation } from '../hooks/useTranslation';
 import { validateSet } from '../lib/validation';
 import { parseImportText } from '../lib/importText';
 import { uuid, timestamp } from '../lib/utils';
@@ -53,6 +59,8 @@ export function SetDetailPage() {
   const navigate = useNavigate();
   const set = useStudySet(id);
   const { deleteSet, replaceSet } = useStudyStore();
+  const { user } = useAuthStore();
+  const { t } = useTranslation();
   const [localSet, setLocalSet] = useState<StudySet | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -70,6 +78,7 @@ export function SetDetailPage() {
   const [descriptionEdit, setDescriptionEdit] = useState('');
   const [editingMeta, setEditingMeta] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
 
   localSetRef.current = localSet;
@@ -188,6 +197,9 @@ export function SetDetailPage() {
   const duplicateTermsError = setValidation.errors.find((e) => e.code === 'DUPLICATE_TERMS');
   const cards = displaySet.cards;
 
+  // Check if current user owns this set
+  const isOwner = !displaySet.userId || displaySet.userId === user?.id;
+
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <AnimatePresence>
@@ -224,6 +236,22 @@ export function SetDetailPage() {
         }}
         onToast={setToast}
       />
+      <MoveToFolderDialog
+        setId={displaySet.id}
+        setName={displaySet.title}
+        currentFolderId={displaySet.folderId}
+        isOpen={showMoveDialog}
+        onClose={() => setShowMoveDialog(false)}
+        onMove={(folderId) => {
+          setLocalSet((prev) => {
+            if (!prev) return prev;
+            return { ...prev, folderId: folderId ?? undefined, updatedAt: timestamp() };
+          });
+          setDirty(true);
+          debouncedSave();
+          setToast(folderId ? t('setMovedToFolder') : t('setRemovedFromFolder'));
+        }}
+      />
 
       <div className="space-y-8">
         {/* Inline editable title & description */}
@@ -254,31 +282,41 @@ export function SetDetailPage() {
             </motion.div>
           ) : (
             <div
-              className="group cursor-pointer rounded-[var(--radius-card)] border border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-surface)] p-4 -mx-4 transition-all duration-[var(--duration-fast)]"
+              className={`group rounded-[var(--radius-card)] border border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-surface)] p-4 -mx-4 transition-all duration-[var(--duration-fast)] ${
+                isOwner ? 'cursor-pointer' : ''
+              }`}
               onClick={() => {
+                if (!isOwner) return;
                 setTitleEdit(displaySet.title);
                 setDescriptionEdit(displaySet.description);
                 setEditingMeta(true);
               }}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) =>
+              role={isOwner ? 'button' : undefined}
+              tabIndex={isOwner ? 0 : undefined}
+              onKeyDown={(e) => {
+                if (!isOwner) return;
                 e.key === 'Enter' &&
-                (setTitleEdit(displaySet.title), setDescriptionEdit(displaySet.description), setEditingMeta(true))
-              }
+                (setTitleEdit(displaySet.title), setDescriptionEdit(displaySet.description), setEditingMeta(true));
+              }}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl font-bold text-[var(--color-text)] tracking-tight">
-                    {displaySet.title || 'Untitled set'}
-                  </h1>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-2xl font-bold text-[var(--color-text)] tracking-tight">
+                      {displaySet.title || 'Untitled set'}
+                    </h1>
+                    <PermissionBadge sharingMode={displaySet.sharingMode || 'private'} size="sm" />
+                    <PermissionBadge permissionLevel={displaySet.effectivePermissions || (isOwner ? 'owner' : 'viewer')} size="sm" />
+                  </div>
                   <p className="text-[var(--color-text-secondary)] text-base mt-2">
-                    {displaySet.description || 'Click to add a description...'}
+                    {displaySet.description || (isOwner ? 'Click to add a description...' : 'No description')}
                   </p>
                 </div>
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-[var(--radius-md)] hover:bg-[var(--color-surface-muted)]">
-                  <Edit3 className="w-4 h-4 text-[var(--color-text-tertiary)]" />
-                </div>
+                {isOwner && (
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-[var(--radius-md)] hover:bg-[var(--color-surface-muted)]">
+                    <Edit3 className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2 mt-4">
                 {displaySet.tags.map((tag) => (
@@ -288,6 +326,30 @@ export function SetDetailPage() {
             </div>
           )}
         </section>
+
+        {/* Sharing - Only for owner */}
+        {isOwner && (
+          <section className="bg-[var(--color-surface)] rounded-[var(--radius-card)] border border-[var(--color-border)] p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium text-[var(--color-text)]">{t('share')}</h3>
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  {displaySet.sharingMode === 'private' && t('onlyYouCanAccess')}
+                  {displaySet.sharingMode === 'restricted' && t('onlyInvitedPeople')}
+                  {displaySet.sharingMode === 'link' && t('anyoneWithLinkCanAccess')}
+                  {displaySet.sharingMode === 'public' && t('anyoneCanFindAndAccess')}
+                  {!displaySet.sharingMode && t('onlyYouCanAccess')}
+                </p>
+              </div>
+              <ShareButton
+                itemType="set"
+                itemId={displaySet.id}
+                itemName={displaySet.title}
+                sharingMode={displaySet.sharingMode || 'private'}
+              />
+            </div>
+          </section>
+        )}
 
         {/* Study modes */}
         {cards.length > 0 && (
@@ -367,50 +429,59 @@ export function SetDetailPage() {
                 {cards.length}
               </span>
             </div>
-            <div className="flex gap-2">
-              <div className="relative" ref={moreRef}>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setShowMoreActions((o) => !o)}
-                  className="gap-2"
-                >
-                  <MoreVertical className="w-4 h-4" />
-                  Actions
-                </Button>
-                {showMoreActions && (
-                  <div className="absolute right-0 top-full mt-2 py-1.5 min-w-[180px] rounded-[var(--radius-card)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-modal)] z-20 animate-fade-in">
-                    <button
-                      type="button"
-                      className="w-full px-4 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
-                      onClick={() => { setShowPhotoImport(true); setShowMoreActions(false); }}
-                    >
-                      <ImagePlus className="w-4 h-4 text-[var(--color-primary)]" /> Photo import
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full px-4 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
-                      onClick={() => { setImportExpanded((e) => !e); setShowMoreActions(false); }}
-                    >
-                      <Plus className="w-4 h-4 text-[var(--color-success)]" /> Paste many
-                    </button>
-                    <div className="border-t border-[var(--color-border)] my-1" />
-                    <button
-                      type="button"
-                      className="w-full px-4 py-2 text-left text-sm text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 flex items-center gap-2.5 transition-colors"
-                      onClick={() => { setShowDeleteConfirm(true); setShowMoreActions(false); }}
-                    >
-                      <Trash2 className="w-4 h-4" /> Delete set
-                    </button>
-                  </div>
-                )}
+            {isOwner && (
+              <div className="flex gap-2">
+                <div className="relative" ref={moreRef}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowMoreActions((o) => !o)}
+                    className="gap-2"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                    Actions
+                  </Button>
+                  {showMoreActions && (
+                    <div className="absolute right-0 top-full mt-2 py-1.5 min-w-[180px] rounded-[var(--radius-card)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-modal)] z-20 animate-fade-in">
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
+                        onClick={() => { setShowPhotoImport(true); setShowMoreActions(false); }}
+                      >
+                        <ImagePlus className="w-4 h-4 text-[var(--color-primary)]" /> Photo import
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
+                        onClick={() => { setImportExpanded((e) => !e); setShowMoreActions(false); }}
+                      >
+                        <Plus className="w-4 h-4 text-[var(--color-success)]" /> Paste many
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
+                        onClick={() => { setShowMoveDialog(true); setShowMoreActions(false); }}
+                      >
+                        <Folder className="w-4 h-4 text-[var(--color-warning)]" /> Move to folder
+                      </button>
+                      <div className="border-t border-[var(--color-border)] my-1" />
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2 text-left text-sm text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 flex items-center gap-2.5 transition-colors"
+                        onClick={() => { setShowDeleteConfirm(true); setShowMoreActions(false); }}
+                      >
+                        <Trash2 className="w-4 h-4" /> Delete set
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          {importExpanded && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }} 
+          {importExpanded && isOwner && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               className="mb-4 p-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] space-y-3"
@@ -461,17 +532,19 @@ export function SetDetailPage() {
             ))}
           </ul>
 
-          <motion.button
-            type="button"
-            onClick={() => handleAddCard()}
-            whileHover={{ scale: 1.005 }}
-            whileTap={{ scale: 0.995 }}
-            className="mt-4 w-full rounded-[var(--radius-card)] border-2 border-dashed border-[var(--color-border)] py-6 flex items-center justify-center gap-2 text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/20 transition-all duration-[var(--duration-normal)] font-medium"
-          >
-            <Plus className="w-5 h-5 shrink-0" />
-            Add card
-            <span className="text-xs text-[var(--color-text-tertiary)]">(or press Enter)</span>
-          </motion.button>
+          {isOwner && (
+            <motion.button
+              type="button"
+              onClick={() => handleAddCard()}
+              whileHover={{ scale: 1.005 }}
+              whileTap={{ scale: 0.995 }}
+              className="mt-4 w-full rounded-[var(--radius-card)] border-2 border-dashed border-[var(--color-border)] py-6 flex items-center justify-center gap-2 text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/20 transition-all duration-[var(--duration-normal)] font-medium"
+            >
+              <Plus className="w-5 h-5 shrink-0" />
+              Add card
+              <span className="text-xs text-[var(--color-text-tertiary)]">(or press Enter)</span>
+            </motion.button>
+          )}
         </section>
       </div>
 

@@ -13,6 +13,9 @@ interface StudySetRow {
   updated_at: number;
   last_studied: number;
   study_stats: StudySet['studyStats'];
+  visibility: 'private' | 'public';
+  sharing_mode: 'private' | 'restricted' | 'link' | 'public';
+  folder_id: string | null;
 }
 
 function toRow(set: StudySet, userId: string): StudySetRow {
@@ -27,6 +30,9 @@ function toRow(set: StudySet, userId: string): StudySetRow {
     updated_at: set.updatedAt,
     last_studied: set.lastStudied,
     study_stats: set.studyStats,
+    visibility: set.visibility,
+    sharing_mode: set.sharingMode || 'private',
+    folder_id: set.folderId ?? null,
   };
 }
 
@@ -41,6 +47,10 @@ function fromRow(row: StudySetRow): StudySet {
     updatedAt: row.updated_at,
     lastStudied: row.last_studied,
     studyStats: row.study_stats,
+    visibility: row.visibility || 'private',
+    userId: row.user_id,
+    sharingMode: row.sharing_mode || 'private',
+    folderId: row.folder_id ?? undefined,
   };
 }
 
@@ -50,6 +60,17 @@ export async function fetchUserSets(userId: string): Promise<StudySet[]> {
     .from('study_sets')
     .select('*')
     .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => fromRow(r as StudySetRow));
+}
+
+export async function fetchPublicSets(): Promise<StudySet[]> {
+  if (!isSupabaseConfigured() || !supabase) return [];
+  const { data, error } = await supabase
+    .from('study_sets')
+    .select('*')
+    .eq('visibility', 'public')
     .order('updated_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((r) => fromRow(r as StudySetRow));

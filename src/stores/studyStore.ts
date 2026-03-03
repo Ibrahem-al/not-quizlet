@@ -3,17 +3,20 @@ import type { StudySet, Card, Settings } from '../types';
 import { uuid, timestamp } from '../lib/utils';
 import * as db from '../lib/db';
 import { useAuthStore } from './authStore';
-import { fetchUserSets, syncSetToCloud, deleteSetFromCloud } from '../lib/cloudSync';
+import { fetchUserSets, fetchPublicSets, syncSetToCloud, deleteSetFromCloud } from '../lib/cloudSync';
 
 interface StudyState {
   sets: StudySet[];
+  publicSets: StudySet[];
   currentSetId: string | null;
   settings: Settings | null;
   loaded: boolean;
+  publicSetsLoaded: boolean;
 }
 
 interface StudyActions {
   loadSets: () => Promise<void>;
+  loadPublicSets: () => Promise<void>;
   addSet: (partial: Partial<StudySet>) => Promise<StudySet>;
   updateSet: (id: string, updates: Partial<StudySet>) => Promise<void>;
   deleteSet: (id: string) => Promise<void>;
@@ -32,6 +35,10 @@ const defaultStudyStats = () => ({
   streakDays: 0,
 });
 
+const defaultSharingMode = (visibility: 'private' | 'public' = 'private'): 'private' | 'restricted' | 'link' | 'public' => {
+  return visibility === 'public' ? 'public' : 'private';
+};
+
 const defaultCard = (partial: Partial<Card>): Card => ({
   id: uuid(),
   term: '',
@@ -47,9 +54,11 @@ const defaultCard = (partial: Partial<Card>): Card => ({
 
 export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
   sets: [],
+  publicSets: [],
   currentSetId: null,
   settings: null,
   loaded: false,
+  publicSetsLoaded: false,
 
   loadSets: async () => {
     const user = useAuthStore.getState().user;
@@ -68,8 +77,18 @@ export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
     }
   },
 
+  loadPublicSets: async () => {
+    try {
+      const publicSets = await fetchPublicSets();
+      set({ publicSets, publicSetsLoaded: true });
+    } catch {
+      set({ publicSets: [], publicSetsLoaded: true });
+    }
+  },
+
   addSet: async (partial) => {
     const now = timestamp();
+    const visibility = partial.visibility ?? 'private';
     const studySet: StudySet = {
       id: uuid(),
       title: partial.title ?? 'Untitled Set',
@@ -80,6 +99,10 @@ export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
       cards: partial.cards ?? [],
       lastStudied: 0,
       studyStats: defaultStudyStats(),
+      visibility,
+      sharingMode: partial.sharingMode ?? defaultSharingMode(visibility),
+      folderId: partial.folderId,
+      effectivePermissions: partial.effectivePermissions,
       ...partial,
     };
     await db.putSet(studySet);

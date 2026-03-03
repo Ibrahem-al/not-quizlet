@@ -6,8 +6,15 @@ import { SetDetailPage } from './pages/SetDetailPage';
 import { NewSetPage } from './pages/NewSetPage';
 import { StudyPage } from './pages/StudyPage';
 import { StatsPage } from './pages/StatsPage';
+import { PublicSetsPage } from './pages/PublicSetsPage';
 import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { AccountSettingsPage } from './pages/AccountSettingsPage';
+import FolderDetailPage from './pages/FolderDetailPage';
+import SharedWithMePage from './pages/SharedWithMePage';
+import AcceptSharePage from './pages/AcceptSharePage';
 import { CommandPalette } from './components/ui/CommandPalette';
 import { ToastManager } from './components/ui/ToastManager';
 import { useAuthStore } from './stores/authStore';
@@ -102,6 +109,13 @@ function App() {
           <Route path="/" element={withPageTransition(HomePage)()} />
           <Route path="/signin" element={withPageTransition(SignInPage)()} />
           <Route path="/signup" element={withPageTransition(SignUpPage)()} />
+          <Route path="/forgot-password" element={withPageTransition(ForgotPasswordPage)()} />
+          <Route path="/reset-password" element={withPageTransition(ResetPasswordPage)()} />
+          <Route path="/account/settings" element={withPageTransition(AccountSettingsPage)()} />
+          <Route path="/explore" element={withPageTransition(PublicSetsPage)()} />
+          <Route path="/folders/:id" element={withPageTransition(FolderDetailPage)()} />
+          <Route path="/shared" element={withPageTransition(SharedWithMePage)()} />
+          <Route path="/share/:token" element={withPageTransition(AcceptSharePage)()} />
           <Route path="/sets/new" element={withPageTransition(NewSetPage)()} />
           <Route path="/sets/:id" element={withPageTransition(SetDetailPage)()} />
           <Route path="/sets/:id/edit" element={<RedirectEditToSet />} />

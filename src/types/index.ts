@@ -47,6 +47,16 @@ export interface StudySet {
     averageAccuracy: number;
     streakDays: number;
   };
+  /**
+   * Legacy visibility field - replaced by sharingMode.
+   * @deprecated Use sharingMode instead
+   */
+  visibility: 'private' | 'public';
+  userId?: string; // Owner user ID (set by cloud sync)
+  // New sharing fields
+  sharingMode: 'private' | 'restricted' | 'link' | 'public';
+  folderId?: string;
+  effectivePermissions?: 'owner' | 'editor' | 'viewer';
 }
 
 export interface Settings {

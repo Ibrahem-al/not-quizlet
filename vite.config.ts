@@ -110,6 +110,7 @@ window.__VITE_OLLAMA_MODEL__=${JSON.stringify(env.ollamaModel)};
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [],
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
       },
     }),
   ],
