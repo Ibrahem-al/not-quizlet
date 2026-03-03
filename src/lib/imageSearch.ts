@@ -4,7 +4,7 @@ export interface ImageResult {
   thumb: string;
   author: string;
   authorUrl?: string;
-  source: 'google' | 'bing' | 'wikimedia' | 'unsplash' | 'pexels';
+  source: 'google' | 'bing' | 'duckduckgo' | 'wikimedia' | 'unsplash' | 'pexels';
   attribution?: string;
 }
 
@@ -25,15 +25,36 @@ export function sanitizeSearchQuery(text: string, maxLen = 100): string {
   return stripHtml(text).replace(/\s+/g, ' ').trim().slice(0, maxLen);
 }
 
-/** Make query image-focused so results match the word/concept (e.g. "apple" → "apple photo"). */
+/** Make query image-focused for educational content. */
 function toImageSearchQuery(q: string): string {
   const t = q.trim();
-  if (!t) return 'vocabulary';
+  if (!t) return 'educational diagram';
   const lower = t.toLowerCase();
+
+  // Check if already has image keywords
   const alreadyImage =
-    /\b(photo|image|picture|diagram|map|chart|illustration|drawing|icon|logo)\b/.test(lower);
+    /\b(photo|image|picture|diagram|map|chart|illustration|drawing|icon|logo|clipart)\b/.test(lower);
+
+  // Educational keywords that improve results for learning materials
+  const educationalKeywords = ['diagram', 'illustration', 'educational', 'science', 'biology', 'history', 'geography', 'anatomy'];
+  const hasEducational = educationalKeywords.some(kw => lower.includes(kw));
+
   const wordCount = t.split(/\s+/).length;
-  if (!alreadyImage && wordCount <= 3) return t + ' photo';
+
+  // For short queries without image keywords, add context
+  if (!alreadyImage && wordCount <= 3) {
+    // If it's a person, place, or thing - add photo
+    if (/\b(mitochondria|cell|atom|molecule|organ|muscle|bone|planet|galaxy|war|battle|president|king|queen)\b/.test(lower)) {
+      return t + ' diagram illustration';
+    }
+    return t + ' photo';
+  }
+
+  // For educational content, add illustration/diagram to get better learning visuals
+  if (hasEducational && !alreadyImage) {
+    return t + ' diagram';
+  }
+
   return t;
 }
 
@@ -214,6 +235,74 @@ async function searchGoogleImages(query: string, page = 1, perPage = 10): Promis
   }));
 }
 
+/** DuckDuckGo Image Search – no API key required. Uses the i.js endpoint. */
+async function searchDuckDuckGo(query: string, page = 1, perPage = 12): Promise<ImageResult[]> {
+  const searchTerm = encodeURIComponent(toImageSearchQuery(query.trim() || 'educational'));
+  // DuckDuckGo's i.js endpoint returns JSON image results
+  const url = `https://duckduckgo.com/i.js?q=${searchTerm}&o=json&p=${page}&s=${perPage}`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      // If direct fetch fails, try via CORS proxy
+      for (const proxy of CORS_PROXIES) {
+        try {
+          const proxyRes = await fetch(proxy + encodeURIComponent(url));
+          if (proxyRes.ok) {
+            const data = (await proxyRes.json()) as {
+              results?: Array<{
+                image: string;
+                thumbnail: string;
+                title?: string;
+                url?: string;
+                source?: string;
+              }>;
+            };
+            const results = data.results ?? [];
+            return results.map((r, i) => ({
+              id: `ddg-${page}-${i}-${r.image.slice(-20).replace(/[^a-zA-Z0-9]/g, '')}`,
+              url: r.image,
+              thumb: r.thumbnail || r.image,
+              author: r.source || 'DuckDuckGo',
+              source: 'duckduckgo' as const,
+              attribution: r.title || 'DuckDuckGo Images',
+            }));
+          }
+        } catch {
+          continue;
+        }
+      }
+      return [];
+    }
+
+    const data = (await res.json()) as {
+      results?: Array<{
+        image: string;
+        thumbnail: string;
+        title?: string;
+        url?: string;
+        source?: string;
+      }>;
+    };
+    const results = data.results ?? [];
+    return results.map((r, i) => ({
+      id: `ddg-${page}-${i}-${r.image.slice(-20).replace(/[^a-zA-Z0-9]/g, '')}`,
+      url: r.image,
+      thumb: r.thumbnail || r.image,
+      author: r.source || 'DuckDuckGo',
+      source: 'duckduckgo' as const,
+      attribution: r.title || 'DuckDuckGo Images',
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /** Wikimedia Commons API – no API key required, CORS-friendly. */
 async function searchWikimedia(query: string, limit = 12): Promise<ImageResult[]> {
   const endpoint = 'https://commons.wikimedia.org/w/api.php';
@@ -328,10 +417,12 @@ export function isImageSearchAvailable(): boolean {
 
 export class ImageSearchService {
   async search(query: string, page = 1, perPage = 9): Promise<ImageResult[]> {
-    const q = query.trim() || 'vocabulary';
+    const q = query.trim() || 'educational diagram';
     const imageQuery = toImageSearchQuery(q);
 
-    // Prefer Google Custom Search when configured (best relevance, same as Google Images)
+    // Priority order: Google > Bing > DuckDuckGo > Wikimedia > Unsplash > Pexels
+
+    // 1. Google Custom Search (best quality, requires API key)
     if (GOOGLE_CSE_KEY && GOOGLE_CSE_CX) {
       try {
         const googleResults = await searchGoogleImages(imageQuery, page, perPage);
@@ -342,12 +433,7 @@ export class ImageSearchService {
       }
     }
 
-    try {
-      const wikimedia = await searchWikimedia(imageQuery, perPage);
-      if (wikimedia.length > 0) return wikimedia;
-    } catch {
-      // fall through
-    }
+    // 2. Bing Image Search (good quality, requires API key)
     if (BING_API_KEY) {
       try {
         const bingResults = await searchBing(imageQuery, page, perPage);
@@ -356,6 +442,24 @@ export class ImageSearchService {
         // fall through
       }
     }
+
+    // 3. DuckDuckGo (good quality, no API key needed)
+    try {
+      const ddgResults = await searchDuckDuckGo(imageQuery, page, perPage);
+      if (ddgResults.length > 0) return ddgResults;
+    } catch {
+      // fall through
+    }
+
+    // 4. Wikimedia Commons (educational focus, no API key)
+    try {
+      const wikimedia = await searchWikimedia(imageQuery, perPage);
+      if (wikimedia.length > 0) return wikimedia;
+    } catch {
+      // fall through
+    }
+
+    // 5. Unsplash (requires API key)
     if (UNSPLASH_ACCESS_KEY) {
       try {
         return await searchUnsplash(imageQuery, page, perPage);
@@ -366,9 +470,12 @@ export class ImageSearchService {
         throw e;
       }
     }
+
+    // 6. Pexels (requires API key, fallback for Unsplash rate limits)
     if (PEXELS_API_KEY) {
       return await searchPexels(imageQuery, page, perPage);
     }
+
     return [];
   }
 

@@ -32,9 +32,15 @@ function getPreferredModel(): string {
   );
 }
 
-async function getAvailableModelNames(): Promise<string[]> {
+async function getAvailableModelNames(timeoutMs = 5000): Promise<string[]> {
   try {
-    const r = await fetch(`${OLLAMA_BASE}/api/tags`, { method: 'GET' });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const r = await fetch(`${OLLAMA_BASE}/api/tags`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
     if (!r.ok) return [];
     const data = (await r.json()) as { models?: Array<{ name: string }> };
     return (data.models ?? []).map((m) => m.name.split(':')[0]);
@@ -105,4 +111,88 @@ export function getAIGeneratorSync(): AIGenerator {
  */
 export function resetAIGeneratorCache(): void {
   cached = null;
+}
+
+export interface AIDiagnostics {
+  ollamaEnabled: boolean;
+  ollamaReachable: boolean;
+  modelsAvailable: string[];
+  selectedModel: string | null;
+  errors: string[];
+  hint: string;
+}
+
+/**
+ * Run detailed diagnostics to help troubleshoot AI connection issues.
+ * Returns step-by-step status of what's working and what's not.
+ */
+export async function getAIDiagnostics(): Promise<AIDiagnostics> {
+  const errors: string[] = [];
+  const diagnostics: AIDiagnostics = {
+    ollamaEnabled: false,
+    ollamaReachable: false,
+    modelsAvailable: [],
+    selectedModel: null,
+    errors,
+    hint: '',
+  };
+
+  // Step 1: Check if Ollama is enabled in config
+  diagnostics.ollamaEnabled = isOllamaEnabled();
+  if (!diagnostics.ollamaEnabled) {
+    errors.push('AI is not enabled in configuration');
+    errors.push('Set VITE_OLLAMA_ENABLED=true in .env and restart the app');
+    diagnostics.hint = 'Enable AI: set VITE_OLLAMA_ENABLED=true in .env and restart the app.';
+    return diagnostics;
+  }
+
+  // Step 2: Check if Ollama is reachable (with timeout)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(`${OLLAMA_BASE}/api/tags`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      errors.push(`Ollama returned error: ${response.status}`);
+      diagnostics.hint = 'Ollama is running but returned an error. Try restarting Ollama.';
+      return diagnostics;
+    }
+    diagnostics.ollamaReachable = true;
+
+    const data = (await response.json()) as { models?: Array<{ name: string }> };
+    diagnostics.modelsAvailable = (data.models ?? []).map((m) => m.name.split(':')[0]);
+  } catch (err) {
+    errors.push('Cannot connect to Ollama at localhost:11434');
+    errors.push('Make sure Ollama is installed and running');
+    diagnostics.hint = '1) Install Ollama (ollama.com) 2) Run: ollama pull llama3.2 3) Start with CORS: OLLAMA_ORIGINS=* ollama serve';
+    return diagnostics;
+  }
+
+  // Step 3: Check if we have any models
+  if (diagnostics.modelsAvailable.length === 0) {
+    errors.push('No AI models found');
+    errors.push('Run: ollama pull llama3.2 (or another model)');
+    diagnostics.hint = 'No models installed. Run: ollama pull llama3.2';
+    return diagnostics;
+  }
+
+  // Step 4: Check if preferred or fallback model is available
+  const preferred = getPreferredModel();
+  const model = resolveModel(diagnostics.modelsAvailable);
+  diagnostics.selectedModel = model;
+
+  if (!model) {
+    errors.push(`Preferred model "${preferred}" not found`);
+    errors.push(`Available models: ${diagnostics.modelsAvailable.join(', ')}`);
+    diagnostics.hint = `Install a compatible model: ollama pull llama3.2`;
+    return diagnostics;
+  }
+
+  // All checks passed
+  diagnostics.hint = `Ready to use! Model: ${model}`;
+  return diagnostics;
 }

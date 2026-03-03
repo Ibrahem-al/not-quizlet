@@ -19,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
 import { Plus, Sparkles } from 'lucide-react';
 import { useEditorStore } from '../../stores/editorStore';
-import { getDuplicateTermCardIds } from '../../lib/validation';
+import { getDuplicateTermCardIds, hasContent } from '../../lib/validation';
 import { CardEditor } from './CardEditor';
 import type { Card } from '../../types';
 
@@ -116,8 +116,18 @@ export function EditorStream({
       if (!editorRef.current?.contains(document.activeElement)) return;
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        addCard(activeCardIndex + 1);
-        onActiveCardChange(activeCardIndex + 1);
+        // Check if the last card has content before creating a new one
+        const lastCard = cards[cards.length - 1];
+        if (lastCard && !hasContent(lastCard)) {
+          // Focus the empty last card instead of creating another blank one
+          const termPanes = editorRef.current?.querySelectorAll('[data-term-pane]');
+          const lastCardTermPane = termPanes?.[cards.length - 1] as HTMLElement | undefined;
+          lastCardTermPane?.querySelector<HTMLElement>('.ProseMirror')?.focus();
+          onActiveCardChange(cards.length - 1);
+        } else {
+          addCard(activeCardIndex + 1);
+          onActiveCardChange(activeCardIndex + 1);
+        }
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Delete') {
         e.preventDefault();
@@ -145,9 +155,19 @@ export function EditorStream({
             nextTerm?.querySelector<HTMLElement>('.ProseMirror')?.focus();
             onActiveCardChange(activeCardIndex + 1);
           } else {
-            e.preventDefault();
-            addCard();
-            onActiveCardChange(cards.length);
+            // Check if the last card has content before creating a new one
+            const lastCard = cards[cards.length - 1];
+            if (lastCard && !hasContent(lastCard)) {
+              e.preventDefault();
+              // Focus the last card's term field instead of creating a new blank card
+              const lastCardTermPane = termPanes?.[cards.length - 1] as HTMLElement | undefined;
+              lastCardTermPane?.querySelector<HTMLElement>('.ProseMirror')?.focus();
+              onActiveCardChange(cards.length - 1);
+            } else {
+              e.preventDefault();
+              addCard();
+              onActiveCardChange(cards.length);
+            }
           }
         }
       }
@@ -207,12 +227,24 @@ export function EditorStream({
           <motion.button
             type="button"
             onClick={() => {
-              addCard();
-              onActiveCardChange(cards.length);
-              setTimeout(() => {
-                const lastCard = editorRef.current?.querySelector(`[data-card-index="${cards.length}"]`);
-                lastCard?.scrollIntoView({ behavior: 'smooth' });
-              }, 50);
+              // Check if the last card has content before creating a new one
+              const lastCard = cards[cards.length - 1];
+              if (lastCard && !hasContent(lastCard)) {
+                // Focus the empty last card instead of creating another blank one
+                onActiveCardChange(cards.length - 1);
+                setTimeout(() => {
+                  const termPanes = editorRef.current?.querySelectorAll('[data-term-pane]');
+                  const lastCardTermPane = termPanes?.[cards.length - 1] as HTMLElement | undefined;
+                  lastCardTermPane?.querySelector<HTMLElement>('.ProseMirror')?.focus();
+                }, 50);
+              } else {
+                addCard();
+                onActiveCardChange(cards.length);
+                setTimeout(() => {
+                  const lastCard = editorRef.current?.querySelector(`[data-card-index="${cards.length}"]`);
+                  lastCard?.scrollIntoView({ behavior: 'smooth' });
+                }, 50);
+              }
             }}
             className="studio-add-card-btn w-full rounded-xl py-8 flex items-center justify-center gap-2 transition-colors font-medium"
             whileHover={{ scale: 1.01 }}

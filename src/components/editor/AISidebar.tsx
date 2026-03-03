@@ -4,10 +4,10 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, FileInput, Sparkles, BarChart3, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Settings, FileInput, Sparkles, BarChart3, ChevronRight, ChevronLeft, Activity, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button, Input } from '../ui';
 import { useEditorStore } from '../../stores/editorStore';
-import { getAIGenerator, getAIUnavailableHint } from '../../lib/ai';
+import { getAIGenerator, getAIUnavailableHint, getAIDiagnostics, type AIDiagnostics } from '../../lib/ai';
 import { parseImportText } from '../../lib/importText';
 
 const TAB_IDS = ['settings', 'import', 'generate', 'stats'] as const;
@@ -24,12 +24,13 @@ export function AISidebar({ open, onToggle, onToast }: AISidebarProps) {
   const set = useEditorStore((s) => s.set);
   const updateSetMeta = useEditorStore((s) => s.updateSetMeta);
   const addCard = useEditorStore((s) => s.addCard);
-  const updateCard = useEditorStore((s) => s.updateCard);
 
   const [importText, setImportText] = useState('');
   const [importPreview, setImportPreview] = useState<{ term: string; definition: string }[] | null>(null);
   const [generateTopic, setGenerateTopic] = useState('');
   const [generateLoading, setGenerateLoading] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<AIDiagnostics | null>(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
 
   if (!set) return null;
 
@@ -40,11 +41,9 @@ export function AISidebar({ open, onToggle, onToast }: AISidebarProps) {
 
   const handleConfirmImport = () => {
     if (!importPreview?.length) return;
+    // Use the new addCard pattern with initialData to create cards with content directly
     importPreview.forEach((p) => {
-      addCard();
-      const { set: s } = useEditorStore.getState();
-      const last = s?.cards[s.cards.length - 1];
-      if (last) updateCard(last.id, { term: p.term, definition: p.definition });
+      addCard(undefined, { term: p.term, definition: p.definition });
     });
     setImportText('');
     setImportPreview(null);
@@ -59,14 +58,12 @@ export function AISidebar({ open, onToggle, onToast }: AISidebarProps) {
       const ai = await getAIGenerator();
       const result = await ai.magicCreate(topic, 7);
       if (result?.cards.length) {
+        // Use the new addCard pattern with initialData to create cards with content directly
         result.cards.forEach((c) => {
-          addCard();
-          const cards = useEditorStore.getState().set?.cards ?? [];
-          const last = cards[cards.length - 1];
-          if (last) updateCard(last.id, { term: c.term, definition: c.definition });
+          addCard(undefined, { term: c.term, definition: c.definition });
         });
         if (result.suggestedTags?.length) updateSetMeta({ tags: result.suggestedTags });
-        onToast?.('Cards generated');
+        onToast?.(`Generated ${result.cards.length} cards`);
         setGenerateTopic('');
       } else {
         onToast?.(`AI unavailable. ${getAIUnavailableHint()}`);
@@ -76,6 +73,24 @@ export function AISidebar({ open, onToggle, onToast }: AISidebarProps) {
       onToast?.(err instanceof Error ? `${err.message}. ${hint}` : `AI failed. ${hint}`);
     } finally {
       setGenerateLoading(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setDiagnosticsLoading(true);
+    setDiagnostics(null);
+    try {
+      const result = await getAIDiagnostics();
+      setDiagnostics(result);
+      if (result.errors.length > 0) {
+        onToast?.(result.hint);
+      } else {
+        onToast?.('AI connection OK - ready to generate');
+      }
+    } catch {
+      onToast?.('Failed to run diagnostics');
+    } finally {
+      setDiagnosticsLoading(false);
     }
   };
 
@@ -191,7 +206,7 @@ export function AISidebar({ open, onToggle, onToast }: AISidebarProps) {
                     className="space-y-3"
                   >
                     <p className="text-xs text-[var(--color-text-secondary)]">
-                      AI generates cards from a topic (Ollama or cloud)
+                      AI generates cards from a topic (requires Ollama running locally)
                     </p>
                     <input
                       type="text"
@@ -200,9 +215,57 @@ export function AISidebar({ open, onToggle, onToast }: AISidebarProps) {
                       onChange={(e) => setGenerateTopic(e.target.value)}
                       placeholder="e.g. Mitochondria"
                     />
-                    <Button onClick={handleGenerate} disabled={generateLoading}>
-                      {generateLoading ? 'Generating…' : 'Generate cards'}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button onClick={handleGenerate} disabled={generateLoading}>
+                        {generateLoading ? 'Generating…' : 'Generate cards'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={handleTestConnection}
+                        disabled={diagnosticsLoading}
+                        className="text-xs px-2"
+                      >
+                        <Activity className="w-3 h-3 mr-1" />
+                        {diagnosticsLoading ? 'Testing…' : 'Test'}
+                      </Button>
+                    </div>
+
+                    {diagnostics && (
+                      <div className="space-y-1.5 text-xs p-2 rounded bg-[var(--color-surface)] border border-[var(--color-border)]">
+                        <div className="flex items-center gap-1.5">
+                          {diagnostics.ollamaEnabled ? (
+                            <CheckCircle className="w-3 h-3 text-[var(--color-success)]" />
+                          ) : (
+                            <AlertCircle className="w-3 h-3 text-[var(--color-danger)]" />
+                          )}
+                          <span className={diagnostics.ollamaEnabled ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}>
+                            {diagnostics.ollamaEnabled ? 'AI enabled' : 'AI not enabled'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {diagnostics.ollamaReachable ? (
+                            <CheckCircle className="w-3 h-3 text-[var(--color-success)]" />
+                          ) : (
+                            <AlertCircle className="w-3 h-3 text-[var(--color-danger)]" />
+                          )}
+                          <span className={diagnostics.ollamaReachable ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}>
+                            {diagnostics.ollamaReachable ? 'Ollama running' : 'Ollama not reachable'}
+                          </span>
+                        </div>
+                        {diagnostics.modelsAvailable.length > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle className="w-3 h-3 text-[var(--color-success)]" />
+                            <span className="text-[var(--color-text-secondary)]">
+                              {diagnostics.modelsAvailable.length} model(s)
+                              {diagnostics.selectedModel && ` • ${diagnostics.selectedModel}`}
+                            </span>
+                          </div>
+                        )}
+                        {diagnostics.errors.length > 0 && (
+                          <p className="text-[var(--color-danger)] mt-1">{diagnostics.hint}</p>
+                        )}
+                      </div>
+                    )}
                   </motion.div>
                 )}
                 {tab === 'stats' && (

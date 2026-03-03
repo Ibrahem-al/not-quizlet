@@ -68,7 +68,7 @@ function allCapsRatio(text: string): number {
 }
 
 /** Check if card has any meaningful content (text or image). */
-function hasContent(card: Card): boolean {
+export function hasContent(card: Card): boolean {
   const termText = stripHtml(card.term);
   const defText = stripHtml(card.definition);
   const hasImage = Boolean(card.imageData);

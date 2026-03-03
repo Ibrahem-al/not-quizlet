@@ -7,30 +7,32 @@
   align-items: flex-start;
   justify-content: center;
   padding: 15vh 16px 0;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
 }
 
 .command-palette {
   background: var(--color-surface);
-  border-radius: 12px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
   width: 100%;
-  max-width: 480px;
+  max-width: 560px;
   overflow: hidden;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--color-border);
+  animation: scaleIn 0.2s ease-out;
 }
 
 .command-palette-input-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--color-text-secondary);
-  border-color: rgba(0, 0, 0, 0.08);
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .command-palette-icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   color: var(--color-text-secondary);
   flex-shrink: 0;
 }
@@ -42,55 +44,117 @@
   font-size: 1rem;
   outline: none;
   color: var(--color-text);
+  font-weight: 400;
 }
 
 .command-palette input::placeholder {
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
 }
 
 .command-palette-list {
-  max-height: 320px;
+  max-height: 400px;
   overflow-y: auto;
-  padding: 6px;
+  padding: 8px;
 }
 
 .command-palette [cmdk-group-heading] {
-  padding: 6px 10px;
-  font-size: 0.7rem;
+  padding: 8px 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-secondary);
+  letter-spacing: 0.08em;
+  color: var(--color-text-tertiary);
+  user-select: none;
 }
 
 .command-palette [cmdk-item] {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.9375rem;
   color: var(--color-text);
+  transition: all var(--duration-fast) ease-out;
+  margin: 2px 0;
+}
+
+.command-palette [cmdk-item]:hover {
+  background: var(--color-surface-muted);
 }
 
 .command-palette [cmdk-item][aria-selected="true"] {
-  background: var(--color-primary);
+  background: var(--gradient-primary);
   color: white;
+  box-shadow: 0 2px 8px rgba(var(--color-primary-rgb), 0.3);
 }
 
 .command-palette [cmdk-item][aria-selected="true"] .command-palette-meta {
   color: rgba(255, 255, 255, 0.85);
 }
 
+.command-palette [cmdk-item][aria-selected="true"] svg {
+  color: white;
+}
+
 .command-palette-meta {
   margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+  background: var(--color-surface-muted);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
 }
 
 .command-palette-empty {
-  padding: 12px;
-  font-size: 0.9rem;
+  padding: 24px;
+  font-size: 0.9375rem;
   color: var(--color-text-secondary);
+  text-align: center;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { 
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+  to { 
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Scrollbar styling within command palette */
+.command-palette-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.command-palette-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.command-palette-list::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+.command-palette-list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Dark mode adjustments */
+.dark .command-palette-overlay {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.dark .command-palette-meta {
+  background: var(--color-surface-elevated);
 }

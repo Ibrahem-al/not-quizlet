@@ -4,6 +4,7 @@ import { Button } from '../ui';
 import { Input } from '../ui';
 import { useSpacedRep } from '../../hooks/useSpacedRep';
 import { shuffle, gradeWrittenAnswer } from '../../lib/algorithms';
+import { useTranslation } from '../../hooks/useTranslation';
 import type { Card } from '../../types';
 
 const spring = { type: 'spring' as const, stiffness: 300, damping: 30 };
@@ -58,6 +59,7 @@ function buildSession(cards: Card[], maxCards = 20): SessionCard[] {
 }
 
 export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
+  const { t } = useTranslation();
   const sessionCards = useMemo(
     () => buildSession(cards, 20),
     [cards]
@@ -66,19 +68,17 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
   const [writtenAnswer, setWrittenAnswer] = useState('');
   const [answered, setAnswered] = useState(false);
   const [correct, setCorrect] = useState(false);
-  const [showConfidence, setShowConfidence] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
   const { recordReview } = useSpacedRep(setId);
 
   const current = sessionCards[index];
-  const progress = sessionCards.length ? `${index + 1} / ${sessionCards.length}` : '0 / 0';
+  const progress = sessionCards.length ? t('progress', { current: index + 1, total: sessionCards.length }) : '0 / 0';
 
   const submitWritten = useCallback(() => {
     if (!current || current.questionType !== 'written') return;
     const ok = gradeWrittenAnswer(current.card.definition, writtenAnswer);
     setCorrect(ok);
     setAnswered(true);
-    setShowConfidence(true);
   }, [current, writtenAnswer]);
 
   const submitMultiple = useCallback((choiceIndex: number) => {
@@ -86,7 +86,6 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
     const ok = choiceIndex === current.correctOption;
     setCorrect(ok);
     setAnswered(true);
-    setShowConfidence(true);
   }, [current]);
 
   const submitTrueFalse = useCallback((value: boolean) => {
@@ -94,7 +93,6 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
     const ok = value === current.isTrue;
     setCorrect(ok);
     setAnswered(true);
-    setShowConfidence(true);
   }, [current]);
 
   const pickConfidence = useCallback(
@@ -104,13 +102,24 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
       await recordReview(current.card, correct ? quality : Math.min(quality, 2), timeSpent, 'learn');
       setAnswered(false);
       setCorrect(false);
-      setShowConfidence(false);
       setWrittenAnswer('');
       if (index < sessionCards.length - 1) setIndex((i) => i + 1);
       else setSessionComplete(true);
     },
     [current, correct, index, sessionCards.length, recordReview]
   );
+
+  // Skip rating and default to medium (quality 4)
+  const skipRating = useCallback(async () => {
+    if (!current) return;
+    const timeSpent = 0;
+    await recordReview(current.card, 4, timeSpent, 'learn');
+    setAnswered(false);
+    setCorrect(false);
+    setWrittenAnswer('');
+    if (index < sessionCards.length - 1) setIndex((i) => i + 1);
+    else setSessionComplete(true);
+  }, [current, index, sessionCards.length, recordReview]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -125,9 +134,9 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
   if (sessionCards.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4">
-        <p className="text-[var(--color-text-secondary)]">No cards to learn.</p>
-        <p className="text-sm text-[var(--color-text-secondary)]">Add cards to this set first.</p>
-        <Button onClick={onExit}>Back</Button>
+        <p className="text-[var(--color-text-secondary)]">{t('noCardsToLearn')}</p>
+        <p className="text-sm text-[var(--color-text-secondary)]">{t('addCardsFirst')}</p>
+        <Button onClick={onExit}>{t('back')}</Button>
       </div>
     );
   }
@@ -139,11 +148,11 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
       >
-        <h2 className="text-xl font-bold text-[var(--color-text)]">Session complete</h2>
+        <h2 className="text-xl font-bold text-[var(--color-text)]">{t('sessionComplete')}</h2>
         <p className="text-[var(--color-text-secondary)]">
-          You studied {sessionCards.length} cards.
+          {t('cardsStudied', { count: sessionCards.length })}
         </p>
-        <Button onClick={onExit}>Back to set</Button>
+        <Button onClick={onExit}>{t('back')}</Button>
       </motion.div>
     );
   }
@@ -154,8 +163,8 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
         <span className="font-mono text-sm text-[var(--color-text-secondary)]">
           {progress}
         </span>
-        <Button variant="ghost" onClick={onExit} aria-label="Exit">
-          Exit
+        <Button variant="ghost" onClick={onExit} aria-label={t('exit')}>
+          {t('exit')}
         </Button>
       </header>
 
@@ -177,14 +186,14 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
               {current.questionType === 'written' && (
                 <div className="space-y-2">
                   <Input
-                    placeholder="Type the definition..."
+                    placeholder={t('typeDefinition')}
                     value={writtenAnswer}
                     onChange={(e) => setWrittenAnswer(e.target.value)}
                     disabled={answered}
                     onKeyDown={(e) => e.key === 'Enter' && submitWritten()}
                   />
                   {!answered && (
-                    <Button onClick={submitWritten}>Check</Button>
+                    <Button onClick={submitWritten}>{t('check')}</Button>
                   )}
                 </div>
               )}
@@ -209,23 +218,23 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
               {current.questionType === 'truefalse' && current.options && (
                 <div className="space-y-3">
                   <p className="text-[var(--color-text-secondary)]">
-                    Definition: &quot;{current.options[0]}&quot;
+                    {t('definition')}: &quot;{current.options[0]}&quot;
                   </p>
-                  <p className="text-sm text-[var(--color-text)]">Is this the correct definition for the term above?</p>
+                  <p className="text-sm text-[var(--color-text)]">{t('isThisCorrect')}</p>
                   <div className="flex gap-2">
                     <Button
                       variant="secondary"
                       onClick={() => submitTrueFalse(true)}
                       disabled={answered}
                     >
-                      True
+                      {t('true')}
                     </Button>
                     <Button
                       variant="secondary"
                       onClick={() => submitTrueFalse(false)}
                       disabled={answered}
                     >
-                      False
+                      {t('false')}
                     </Button>
                   </div>
                 </div>
@@ -238,33 +247,63 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                   className={`p-3 rounded-lg ${correct ? 'bg-[var(--color-success)]/20' : 'bg-[var(--color-danger)]/20'}`}
                 >
                   <p className="text-sm text-[var(--color-text)]">
-                    {correct ? 'Correct!' : `Correct: ${current.card.definition}`}
+                    {correct ? t('correct') : `${t('correctAnswer', { answer: current.card.definition })}`}
                   </p>
                 </motion.div>
               )}
 
-              {showConfidence && (
+              {/* Show confidence rating only when answered correctly */}
+              {answered && correct && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="flex gap-2 flex-wrap"
                 >
                   <span className="text-sm text-[var(--color-text-secondary)] w-full">
-                    How well did you know it?
+                    {t('howWellDidYouKnow')}
                   </span>
-                  {(['Easy', 'Medium', 'Hard'] as const).map((label, i) => {
-                    const quality = [5, 4, 3][i];
-                    return (
-                      <motion.div key={label} whileTap={{ scale: 0.95 }} transition={spring}>
-                        <Button
-                          variant="secondary"
-                          onClick={() => pickConfidence(quality)}
-                        >
-                          {label}
-                        </Button>
-                      </motion.div>
-                    );
-                  })}
+                  <motion.div whileTap={{ scale: 0.95 }} transition={spring}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => pickConfidence(5)}
+                    >
+                      {t('easy')}
+                    </Button>
+                  </motion.div>
+                  <motion.div whileTap={{ scale: 0.95 }} transition={spring}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => pickConfidence(4)}
+                    >
+                      {t('medium')}
+                    </Button>
+                  </motion.div>
+                  <motion.div whileTap={{ scale: 0.95 }} transition={spring}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => pickConfidence(3)}
+                    >
+                      {t('hard')}
+                    </Button>
+                  </motion.div>
+                  <motion.div whileTap={{ scale: 0.95 }} transition={spring}>
+                    <Button variant="ghost" onClick={skipRating}>
+                      {t('next')}
+                    </Button>
+                  </motion.div>
+                </motion.div>
+              )}
+
+              {/* Show Next button only when answered incorrectly */}
+              {answered && !correct && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex gap-2"
+                >
+                  <motion.div whileTap={{ scale: 0.95 }} transition={spring}>
+                    <Button onClick={skipRating}>{t('next')}</Button>
+                  </motion.div>
                 </motion.div>
               )}
             </motion.div>

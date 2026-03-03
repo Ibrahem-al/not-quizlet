@@ -2,13 +2,14 @@
  * Studio Mode: full-screen bilateral card editor with stream, sidebar, auto-save.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { Check, Save } from 'lucide-react';
 import { useEditorStore } from '../stores/editorStore';
 import { useStudyStore } from '../stores/studyStore';
 import { useValidationStore } from '../stores/validationStore';
+import { useToastStore } from '../stores/toastStore';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { EditorStream } from '../components/editor/EditorStream';
 import { AISidebar } from '../components/editor/AISidebar';
@@ -19,15 +20,23 @@ import '../styles/editor.css';
 
 export function EditorPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const loadSet = useEditorStore((s) => s.loadSet);
   const set = useEditorStore((s) => s.set);
+  const unsavedChanges = useEditorStore((s) => s.unsavedChanges);
+  const setSaved = useEditorStore((s) => s.setSaved);
   const sets = useStudyStore((s) => s.sets);
+  const replaceSet = useStudyStore((s) => s.replaceSet);
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [savedPulse, setSavedPulse] = useState(false);
   const [triggerImageModal, setTriggerImageModal] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
+  const showToast = useToastStore((s) => s.show);
+  const runValidation = useValidationStore((s) => s.runValidation);
+  const canSave = useValidationStore((s) => s.canSave);
 
   const loadSets = useStudyStore((s) => s.loadSets);
   const studySet = id ? sets.find((s) => s.id === id) : null;
@@ -40,12 +49,41 @@ export function EditorPage() {
     if (studySet) loadSet(studySet);
   }, [studySet, loadSet]);
 
-  const runValidation = useValidationStore((s) => s.runValidation);
   const cardErrors = useValidationStore((s) => s.cardErrors);
 
   useEffect(() => {
     runValidation(set ?? null);
   }, [set?.id, set?.cards, runValidation, set]);
+
+  const handleSaveAndExit = useCallback(async () => {
+    if (!set || !id) return;
+
+    setIsSaving(true);
+
+    // Run validation first
+    runValidation(set);
+
+    if (!canSave()) {
+      showToast('error', 'Fix validation errors before saving (e.g. empty terms).', 4000);
+      setIsSaving(false);
+      return;
+    }
+
+    try {
+      const now = Date.now();
+      await replaceSet({ ...set, updatedAt: now });
+      setSaved(now);
+      showToast('success', 'Set saved successfully!', 2000);
+
+      // Small delay to show the success message before navigating
+      setTimeout(() => {
+        navigate(`/sets/${id}`);
+      }, 500);
+    } catch (err) {
+      showToast('error', 'Save failed. Please try again.', 4000);
+      setIsSaving(false);
+    }
+  }, [set, id, runValidation, canSave, replaceSet, setSaved, showToast, navigate]);
 
   useAutoSave();
 
@@ -62,6 +100,20 @@ export function EditorPage() {
     }, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Warn before closing/refreshing if there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (unsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [unsavedChanges]);
 
   if (!id) {
     return (
@@ -111,6 +163,24 @@ export function EditorPage() {
               Saved
             </motion.span>
           )}
+          {unsavedChanges && (
+            <span className="text-xs text-[var(--color-text-secondary)]">
+              Unsaved changes
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSaveAndExit}
+            disabled={isSaving}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shadow-sm"
+            style={{ minHeight: '40px' }}
+            title={unsavedChanges ? 'You have unsaved changes' : 'All changes saved'}
+          >
+            <Save className="w-4 h-4" />
+            {isSaving ? 'Saving...' : unsavedChanges ? 'Save & Exit' : 'Saved'}
+          </button>
         </div>
       </header>
 

@@ -16,7 +16,7 @@ interface EditorState {
 interface EditorActions {
   loadSet: (set: StudySet) => void;
   updateCard: (cardId: string, updates: Partial<Card>) => void;
-  addCard: (index?: number) => void;
+  addCard: (index?: number, initialData?: Partial<Card>) => void;
   deleteCard: (cardId: string) => void;
   reorderCards: (oldIndex: number, newIndex: number) => void;
   updateSetMeta: (updates: Partial<Pick<StudySet, 'title' | 'description' | 'tags'>>) => void;
@@ -50,10 +50,10 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
     set({ set: { ...s, cards }, unsavedChanges: true });
   },
 
-  addCard: (index) => {
+  addCard: (index, initialData) => {
     const { set: s } = get();
     if (!s) return;
-    const card = defaultCard();
+    const card = { ...defaultCard(), ...initialData };
     const cards = [...s.cards];
     const i = index ?? cards.length;
     cards.splice(i, 0, card);

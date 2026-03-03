@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Activity, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button, Input } from '../components/ui';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useStudyStore } from '../stores/studyStore';
-import { getAIGenerator, getAIUnavailableHint } from '../lib/ai';
+import { getAIGenerator, getAIUnavailableHint, getAIDiagnostics, type AIDiagnostics } from '../lib/ai';
 import { uuid } from '../lib/utils';
 import type { Card } from '../types';
 
@@ -18,6 +18,8 @@ export function NewSetPage() {
   const [magicExpanded, setMagicExpanded] = useState(false);
   const [magicLoading, setMagicLoading] = useState(false);
   const [magicError, setMagicError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<AIDiagnostics | null>(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
 
   const handleCreate = async () => {
     setCreating(true);
@@ -71,6 +73,23 @@ export function NewSetPage() {
     }
   };
 
+  const handleTestConnection = async () => {
+    setDiagnosticsLoading(true);
+    setDiagnostics(null);
+    setMagicError(null);
+    try {
+      const result = await getAIDiagnostics();
+      setDiagnostics(result);
+      if (result.errors.length > 0) {
+        setMagicError(result.hint);
+      }
+    } catch (err) {
+      setMagicError('Failed to run diagnostics. Please try again.');
+    } finally {
+      setDiagnosticsLoading(false);
+    }
+  };
+
   return (
     <AppLayout breadcrumbs={[{ label: 'New set' }]}>
       <div className="max-w-lg">
@@ -112,24 +131,79 @@ export function NewSetPage() {
             {magicExpanded && (
               <div className="mt-4 space-y-3 p-4 rounded-[var(--radius-card)] bg-[var(--color-primary-muted)]/30 border border-[var(--color-border)]">
                 <p className="text-sm text-[var(--color-text-secondary)]">
-                  Enter a topic; AI will generate flashcards (requires Ollama or cloud AI).
+                  Enter a topic; AI will generate flashcards (requires Ollama running locally).
                 </p>
                 <Input
                   placeholder="e.g. Mitochondria, World War 2"
                   value={magicTopic}
                   onChange={(e) => setMagicTopic(e.target.value)}
                 />
-                <Button
-                  variant="secondary"
-                  onClick={handleMagicCreate}
-                  disabled={magicLoading || !magicTopic.trim()}
-                >
-                  {magicLoading ? 'Generating…' : 'Generate set'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={handleMagicCreate}
+                    disabled={magicLoading || !magicTopic.trim()}
+                  >
+                    {magicLoading ? 'Generating…' : 'Generate set'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={handleTestConnection}
+                    disabled={diagnosticsLoading}
+                    className="text-xs"
+                  >
+                    <Activity className="w-4 h-4 mr-1" />
+                    {diagnosticsLoading ? 'Testing…' : 'Test connection'}
+                  </Button>
+                </div>
+
+                {diagnostics && (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      {diagnostics.ollamaEnabled ? (
+                        <CheckCircle className="w-4 h-4 text-[var(--color-success)]" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-[var(--color-danger)]" />
+                      )}
+                      <span className={diagnostics.ollamaEnabled ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}>
+                        AI {diagnostics.ollamaEnabled ? 'enabled' : 'not enabled'} in config
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {diagnostics.ollamaReachable ? (
+                        <CheckCircle className="w-4 h-4 text-[var(--color-success)]" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-[var(--color-danger)]" />
+                      )}
+                      <span className={diagnostics.ollamaReachable ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}>
+                        Ollama {diagnostics.ollamaReachable ? 'reachable' : 'not reachable'}
+                      </span>
+                    </div>
+                    {diagnostics.modelsAvailable.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-[var(--color-success)]" />
+                        <span className="text-[var(--color-text-secondary)]">
+                          {diagnostics.modelsAvailable.length} model(s) available
+                          {diagnostics.selectedModel && ` • Using: ${diagnostics.selectedModel}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {magicError && (
-                  <p className="text-sm text-[var(--color-danger)]" role="alert">
-                    {magicError}
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-[var(--color-danger)]" role="alert">
+                      {magicError}
+                    </p>
+                    {diagnostics && diagnostics.errors.length > 0 && (
+                      <ul className="text-xs text-[var(--color-text-secondary)] space-y-1 pl-4">
+                        {diagnostics.errors.map((err, i) => (
+                          <li key={i}>• {err}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 )}
               </div>
             )}

@@ -2,36 +2,128 @@
 
 /* StudyFlow design system – CSS variables */
 :root {
-  /* Colors */
+  /* Brand Colors */
   --color-primary: #4255FF;
   --color-primary-hover: #3642d4;
   --color-primary-muted: rgba(66, 85, 255, 0.12);
+  --color-primary-rgb: 66, 85, 255;
+  
+  /* Semantic Colors */
   --color-success: #10b981;
+  --color-success-rgb: 16, 185, 129;
   --color-warning: #f59e0b;
+  --color-warning-rgb: 245, 158, 11;
   --color-danger: #ef4444;
-  --color-background: #f1f3f9;
+  --color-danger-rgb: 239, 68, 68;
+  
+  /* Light Theme - Surface Colors */
+  --color-background: #f8fafc;
   --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-card-hover: #f8fafc;
+  
+  /* Light Theme - Text Colors */
   --color-text: #0f172a;
+  --color-text-rgb: 15, 23, 42;
   --color-text-secondary: #64748b;
+  --color-text-tertiary: #94a3b8;
+  --color-text-muted: #cbd5e1;
+  
+  /* Light Theme - Border Colors */
   --color-border: rgba(15, 23, 42, 0.08);
+  --color-border-hover: rgba(15, 23, 42, 0.12);
   --color-border-focus: var(--color-primary);
-
-  /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-card-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
-  --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
-
+  --color-divider: rgba(15, 23, 42, 0.06);
+  
+  /* Light Theme - Elevation */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-card-hover: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -4px rgba(0, 0, 0, 0.02);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+  --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.18);
+  --shadow-focus: 0 0 0 3px rgba(66, 85, 255, 0.15);
+  
+  /* Light Theme - Gradient Accents */
+  --gradient-primary: linear-gradient(135deg, #4255FF 0%, #6366f1 100%);
+  --gradient-surface: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  --gradient-card: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  
   /* Radius */
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-card: 12px;
-  --radius-button: 8px;
-
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-card: 14px;
+  --radius-button: 10px;
+  --radius-full: 9999px;
+  
   /* Motion */
   --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-instant: 100ms;
   --duration-fast: 150ms;
   --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --duration-slower: 500ms;
+}
+
+/* Dark Theme */
+.dark {
+  /* Brand Colors - Same as light for consistency */
+  --color-primary: #5b6cff;
+  --color-primary-hover: #7782ff;
+  --color-primary-muted: rgba(91, 108, 255, 0.15);
+  --color-primary-rgb: 91, 108, 255;
+  
+  /* Semantic Colors - Adjusted for dark */
+  --color-success: #34d399;
+  --color-success-rgb: 52, 211, 153;
+  --color-warning: #fbbf24;
+  --color-warning-rgb: 251, 191, 36;
+  --color-danger: #f87171;
+  --color-danger-rgb: 248, 113, 113;
+  
+  /* Dark Theme - Surface Colors */
+  --color-background: #0b1120;
+  --color-surface: #151c2c;
+  --color-surface-elevated: #1e293b;
+  --color-surface-muted: #0f172a;
+  --color-card-hover: #1e293b;
+  
+  /* Dark Theme - Text Colors */
+  --color-text: #f1f5f9;
+  --color-text-rgb: 241, 245, 249;
+  --color-text-secondary: #94a3b8;
+  --color-text-tertiary: #64748b;
+  --color-text-muted: #475569;
+  
+  /* Dark Theme - Border Colors */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.12);
+  --color-border-focus: var(--color-primary);
+  --color-divider: rgba(255, 255, 255, 0.06);
+  
+  /* Dark Theme - Elevation */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-card-hover: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  --shadow-focus: 0 0 0 3px rgba(91, 108, 255, 0.25);
+  
+  /* Dark Theme - Gradient Accents */
+  --gradient-primary: linear-gradient(135deg, #5b6cff 0%, #818cf8 100%);
+  --gradient-surface: linear-gradient(180deg, #151c2c 0%, #0b1120 100%);
+  --gradient-card: linear-gradient(145deg, #1e293b 0%, #151c2c 100%);
 }
 
 @theme {
@@ -58,6 +150,8 @@
     background-color: var(--color-background);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color var(--duration-slow) var(--ease-smooth),
+                color var(--duration-slow) var(--ease-smooth);
   }
 
   body {
@@ -70,20 +164,118 @@
     font-weight: 600;
     line-height: 1.3;
     color: var(--color-text);
+    letter-spacing: -0.01em;
   }
 
-  h1 { font-size: 1.75rem; }
-  h2 { font-size: 1.25rem; }
-  h3 { font-size: 1.125rem; }
+  h1 { font-size: 1.875rem; font-weight: 700; }
+  h2 { font-size: 1.5rem; font-weight: 600; }
+  h3 { font-size: 1.25rem; font-weight: 600; }
+  h4 { font-size: 1.125rem; font-weight: 600; }
 
   /* Focus visible for keyboard users */
   :focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
+  
+  /* Custom selection colors */
+  ::selection {
+    background-color: var(--color-primary-muted);
+    color: var(--color-text);
+  }
 
   /* Smooth scroll */
   @media (prefers-reduced-motion: no-preference) {
     html { scroll-behavior: smooth; }
+  }
+  
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-text-muted);
+    border-radius: var(--radius-full);
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-tertiary);
+  }
+  
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-text-muted) transparent;
+  }
+}
+
+/* Utility Classes for common patterns */
+@layer utilities {
+  .text-gradient {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .bg-surface-elevated {
+    background: var(--color-surface-elevated);
+  }
+  
+  .bg-surface-muted {
+    background: var(--color-surface-muted);
+  }
+  
+  .shadow-elevated {
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .focus-ring {
+    box-shadow: var(--shadow-focus);
+  }
+  
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fadeIn var(--duration-normal) var(--ease-out);
+  }
+  
+  .animate-slide-up {
+    animation: slideUp var(--duration-normal) var(--ease-out);
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn var(--duration-fast) var(--ease-spring);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

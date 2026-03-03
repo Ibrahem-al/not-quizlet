@@ -8,6 +8,10 @@ import {
   Trash2,
   Plus,
   ImagePlus,
+  Clock,
+  AlertCircle,
+  MoreVertical,
+  Edit3,
 } from 'lucide-react';
 import { useDebouncedCallback } from 'use-debounce';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,10 +30,10 @@ import { PhotoImportModal } from '../components/import/PhotoImportModal';
 import type { Card as CardType, StudySet } from '../types';
 
 const modes = [
-  { path: 'flashcards', label: 'Flashcards', icon: LayoutGrid, description: 'Flip through cards, swipe to rate.' },
-  { path: 'learn', label: 'Learn', icon: BookOpen, description: 'Spaced repetition with mixed question types.' },
-  { path: 'match', label: 'Match', icon: Puzzle, description: 'Drag terms to definitions against the clock.' },
-  { path: 'test', label: 'Test', icon: ClipboardList, description: 'Quiz with written, multiple choice, and more.' },
+  { path: 'flashcards', label: 'Flashcards', icon: LayoutGrid, description: 'Flip through cards, swipe to rate.', color: 'from-blue-500 to-indigo-500' },
+  { path: 'learn', label: 'Learn', icon: BookOpen, description: 'Spaced repetition with mixed question types.', color: 'from-emerald-500 to-teal-500' },
+  { path: 'match', label: 'Match', icon: Puzzle, description: 'Drag terms to definitions against the clock.', color: 'from-orange-500 to-amber-500' },
+  { path: 'test', label: 'Test', icon: ClipboardList, description: 'Quiz with written, multiple choice, and more.', color: 'from-purple-500 to-pink-500' },
 ] as const;
 
 const defaultCard = (): CardType => ({
@@ -65,8 +69,18 @@ export function SetDetailPage() {
   const [titleEdit, setTitleEdit] = useState('');
   const [descriptionEdit, setDescriptionEdit] = useState('');
   const [editingMeta, setEditingMeta] = useState(false);
+  const [showMoreActions, setShowMoreActions] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
 
   localSetRef.current = localSet;
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setShowMoreActions(false);
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, []);
 
   useEffect(() => {
     if (set && !dirty) {
@@ -153,8 +167,11 @@ export function SetDetailPage() {
   if (!set) {
     return (
       <AppLayout>
-        <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
-          <p className="text-[var(--color-text-secondary)]">Set not found.</p>
+        <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface-muted)] flex items-center justify-center mb-2">
+            <AlertCircle className="w-8 h-8 text-[var(--color-text-tertiary)]" />
+          </div>
+          <p className="text-[var(--color-text-secondary)] text-lg">Set not found.</p>
           <Link to="/">
             <Button variant="secondary">Back to Home</Button>
           </Link>
@@ -203,35 +220,41 @@ export function SetDetailPage() {
           setDirty(true);
           debouncedSave();
           setAddingCard(false);
+          setToast(`${pairs.length} cards added from photo`);
         }}
         onToast={setToast}
       />
 
       <div className="space-y-8">
         {/* Inline editable title & description */}
-        <div>
+        <section>
           {editingMeta ? (
-            <div className="space-y-3">
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }} 
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-3 bg-[var(--color-surface)] rounded-[var(--radius-card)] border border-[var(--color-border)] p-5"
+            >
               <Input
                 value={titleEdit}
                 onChange={(e) => setTitleEdit(e.target.value)}
                 placeholder="Set title"
+                icon={<Edit3 className="w-4 h-4" />}
               />
               <Input
                 value={descriptionEdit}
                 onChange={(e) => setDescriptionEdit(e.target.value)}
                 placeholder="Description"
               />
-              <div className="flex gap-2">
+              <div className="flex gap-2 pt-2">
                 <Button variant="secondary" onClick={() => setEditingMeta(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleSaveMeta}>Done</Button>
+                <Button onClick={handleSaveMeta}>Save Changes</Button>
               </div>
-            </div>
+            </motion.div>
           ) : (
             <div
-              className="cursor-text rounded-[var(--radius-sm)] -mx-1 px-1 py-0.5 hover:bg-[var(--color-primary-muted)]/50 transition-colors"
+              className="group cursor-pointer rounded-[var(--radius-card)] border border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-surface)] p-4 -mx-4 transition-all duration-[var(--duration-fast)]"
               onClick={() => {
                 setTitleEdit(displaySet.title);
                 setDescriptionEdit(displaySet.description);
@@ -244,55 +267,73 @@ export function SetDetailPage() {
                 (setTitleEdit(displaySet.title), setDescriptionEdit(displaySet.description), setEditingMeta(true))
               }
             >
-              <h1 className="text-2xl font-semibold text-[var(--color-text)]">
-                {displaySet.title || 'Untitled set'}
-              </h1>
-              <p className="text-[var(--color-text-secondary)] text-sm mt-1">
-                {displaySet.description || 'Add a description...'}
-              </p>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-2xl font-bold text-[var(--color-text)] tracking-tight">
+                    {displaySet.title || 'Untitled set'}
+                  </h1>
+                  <p className="text-[var(--color-text-secondary)] text-base mt-2">
+                    {displaySet.description || 'Click to add a description...'}
+                  </p>
+                </div>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-[var(--radius-md)] hover:bg-[var(--color-surface-muted)]">
+                  <Edit3 className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mt-4">
+                {displaySet.tags.map((tag) => (
+                  <Badge key={tag} variant="default">{tag}</Badge>
+                ))}
+              </div>
             </div>
           )}
-          <div className="flex flex-wrap gap-2 mt-3">
-            {displaySet.tags.map((tag) => (
-              <Badge key={tag}>{tag}</Badge>
-            ))}
-            <Button
-              variant="ghost"
-              onClick={() => setShowDeleteConfirm(true)}
-              aria-label="Delete set"
-              className="gap-2 text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
-            >
-              <Trash2 className="w-4 h-4 shrink-0" />
-              Delete set
-            </Button>
-          </div>
-        </div>
+        </section>
 
         {/* Study modes */}
         {cards.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold text-[var(--color-text)] mb-3">
-              Choose a study mode
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-[var(--color-text)] tracking-tight">
+                Choose a study mode
+              </h2>
+              {displaySet.studyStats.totalSessions > 0 && (
+                <div className="flex items-center gap-1.5 text-sm text-[var(--color-text-secondary)]">
+                  <Clock className="w-4 h-4" />
+                  <span>{displaySet.studyStats.totalSessions} sessions</span>
+                </div>
+              )}
+            </div>
+            
             {!canStartStudying && minCardsError && (
-              <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-4 py-3 text-sm text-[var(--color-text)]">
-                <p className="font-medium">{minCardsError.message}</p>
-                <p className="mt-1 text-[var(--color-text-secondary)]">Add another card below.</p>
+              <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-3 text-sm">
+                <div className="flex items-center gap-2 text-[var(--color-text)]">
+                  <AlertCircle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
+                  <p className="font-medium">{minCardsError.message}</p>
+                </div>
+                <p className="mt-1 text-[var(--color-text-secondary)] ml-6">Add another card below to start studying.</p>
               </div>
             )}
+            
             {duplicateTermsError && (
-              <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-4 py-3 text-sm text-[var(--color-text)]">
-                <p>{duplicateTermsError.message}</p>
+              <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-3 text-sm">
+                <div className="flex items-center gap-2 text-[var(--color-text)]">
+                  <AlertCircle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
+                  <p>{duplicateTermsError.message}</p>
+                </div>
               </div>
             )}
+            
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {modes.map(({ path, label, icon: Icon, description }) =>
+              {modes.map(({ path, label, icon: Icon, description, color }) =>
                 canStartStudying ? (
                   <Link key={path} to={`/sets/${displaySet.id}/study/${path}`}>
-                    <Card className="flex flex-col items-center gap-2 py-5 min-h-[100px] justify-center text-center">
-                      <Icon className="w-8 h-8 text-[var(--color-primary)] shrink-0" />
-                      <span className="text-sm font-medium text-[var(--color-text)]">{label}</span>
-                      <span className="text-xs text-[var(--color-text-secondary)] px-2">
+                    <Card variant="elevated" className="flex flex-col items-center gap-2 py-5 min-h-[120px] justify-center text-center group cursor-pointer relative overflow-hidden">
+                      <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-0 group-hover:opacity-5 transition-opacity duration-300`} />
+                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-lg mb-1`}>
+                        <Icon className="w-6 h-6 text-white shrink-0" />
+                      </div>
+                      <span className="text-sm font-semibold text-[var(--color-text)]">{label}</span>
+                      <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">
                         {description}
                       </span>
                     </Card>
@@ -300,12 +341,14 @@ export function SetDetailPage() {
                 ) : (
                   <div
                     key={path}
-                    className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] opacity-60 cursor-not-allowed text-center min-h-[100px] justify-center"
+                    className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] opacity-50 cursor-not-allowed text-center min-h-[120px] justify-center"
                     aria-disabled="true"
                   >
-                    <Icon className="w-8 h-8 text-[var(--color-text-secondary)] shrink-0" />
-                    <span className="text-sm font-medium text-[var(--color-text-secondary)]">{label}</span>
-                    <span className="text-xs text-[var(--color-text-secondary)] px-2">{description}</span>
+                    <div className="w-12 h-12 rounded-xl bg-[var(--color-text-muted)]/30 flex items-center justify-center mb-1">
+                      <Icon className="w-6 h-6 text-[var(--color-text-tertiary)] shrink-0" />
+                    </div>
+                    <span className="text-sm font-semibold text-[var(--color-text-secondary)]">{label}</span>
+                    <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">{description}</span>
                   </div>
                 )
               )}
@@ -315,52 +358,88 @@ export function SetDetailPage() {
 
         {/* Inline cards + Add card */}
         <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-[var(--color-text)]">Cards</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-bold text-[var(--color-text)] tracking-tight">
+                Cards
+              </h2>
+              <span className="text-sm text-[var(--color-text-tertiary)] bg-[var(--color-surface-muted)] px-2.5 py-1 rounded-full font-medium">
+                {cards.length}
+              </span>
+            </div>
             <div className="flex gap-2">
-              <button
-                type="button"
-                className="px-3 py-2 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-text-secondary)]/5 rounded-lg flex items-center gap-2"
-                onClick={() => setShowPhotoImport(true)}
-              >
-                <ImagePlus className="w-4 h-4" /> Photo
-              </button>
-              <button
-                type="button"
-                className="px-3 py-2 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-text-secondary)]/5 rounded-lg flex items-center justify-between gap-2"
-                onClick={() => setImportExpanded((e) => !e)}
-                aria-expanded={importExpanded}
-              >
-                Paste to add many {importExpanded ? '−' : '+'}
-              </button>
+              <div className="relative" ref={moreRef}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowMoreActions((o) => !o)}
+                  className="gap-2"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                  Actions
+                </Button>
+                {showMoreActions && (
+                  <div className="absolute right-0 top-full mt-2 py-1.5 min-w-[180px] rounded-[var(--radius-card)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-modal)] z-20 animate-fade-in">
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
+                      onClick={() => { setShowPhotoImport(true); setShowMoreActions(false); }}
+                    >
+                      <ImagePlus className="w-4 h-4 text-[var(--color-primary)]" /> Photo import
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
+                      onClick={() => { setImportExpanded((e) => !e); setShowMoreActions(false); }}
+                    >
+                      <Plus className="w-4 h-4 text-[var(--color-success)]" /> Paste many
+                    </button>
+                    <div className="border-t border-[var(--color-border)] my-1" />
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 flex items-center gap-2.5 transition-colors"
+                      onClick={() => { setShowDeleteConfirm(true); setShowMoreActions(false); }}
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete set
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {importExpanded && (
-            <div className="mb-4 p-4 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3">
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }} 
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-4 p-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] space-y-3"
+            >
               <p className="text-sm text-[var(--color-text-secondary)]">
-                One per line: &quot;term - definition&quot; or tab-separated
+                One per line: <code className="px-1.5 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-primary)] font-mono text-xs">term - definition</code> or tab-separated
               </p>
               <textarea
-                className="w-full min-h-[80px] rounded-[var(--radius-button)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                placeholder="Hola - Hello&#10;Gracias - Thank you"
+                className="w-full min-h-[100px] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-3 text-sm focus:outline-none focus:ring-[3px] focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all resize-y"
+                placeholder="Hola - Hello&#10;Gracias - Thank you&#10;Por favor - Please"
                 value={importText}
                 onChange={(e) => { setImportText(e.target.value); setImportParseError(false); }}
               />
               <div className="flex gap-2 flex-wrap">
-                <Button variant="secondary" onClick={() => { const p = parseImportText(importText); setImportPreview(p.length ? p : null); setImportParseError(p.length === 0 && !!importText.trim()); }}>
+                <Button variant="secondary" size="sm" onClick={() => { const p = parseImportText(importText); setImportPreview(p.length ? p : null); setImportParseError(p.length === 0 && !!importText.trim()); }}>
                   Preview
                 </Button>
                 {importPreview && (
                   <>
-                    <span className="self-center text-sm text-[var(--color-text-secondary)]">{importPreview.length} cards</span>
-                    <Button onClick={handleConfirmImport} disabled={addingCard}>{addingCard ? 'Adding…' : 'Add all'}</Button>
-                    <Button variant="ghost" onClick={() => setImportPreview(null)}>Cancel</Button>
+                    <span className="self-center text-sm text-[var(--color-text-secondary)] bg-[var(--color-surface-muted)] px-3 py-1.5 rounded-full">
+                      {importPreview.length} cards
+                    </span>
+                    <Button size="sm" onClick={handleConfirmImport} disabled={addingCard}>{addingCard ? 'Adding...' : 'Add all'}</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setImportPreview(null)}>Cancel</Button>
                   </>
                 )}
               </div>
-              {importParseError && <p className="text-sm text-[var(--color-danger)]">No valid pairs found.</p>}
-            </div>
+              {importParseError && <p className="text-sm text-[var(--color-danger)] font-medium">No valid pairs found.</p>}
+            </motion.div>
           )}
 
           <ul className="space-y-3">
@@ -382,14 +461,17 @@ export function SetDetailPage() {
             ))}
           </ul>
 
-          <button
+          <motion.button
             type="button"
             onClick={() => handleAddCard()}
-            className="mt-4 w-full rounded-[var(--radius-card)] border-2 border-dashed border-[var(--color-border)] py-6 flex items-center justify-center gap-2 text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/30 transition-all duration-[var(--duration-normal)]"
+            whileHover={{ scale: 1.005 }}
+            whileTap={{ scale: 0.995 }}
+            className="mt-4 w-full rounded-[var(--radius-card)] border-2 border-dashed border-[var(--color-border)] py-6 flex items-center justify-center gap-2 text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/20 transition-all duration-[var(--duration-normal)] font-medium"
           >
             <Plus className="w-5 h-5 shrink-0" />
-            Add card (or press Enter in definition)
-          </button>
+            Add card
+            <span className="text-xs text-[var(--color-text-tertiary)]">(or press Enter)</span>
+          </motion.button>
         </section>
       </div>
 
@@ -397,13 +479,27 @@ export function SetDetailPage() {
       <AnimatePresence>
         {(saveStatus === 'saving' || saveStatus === 'saved') && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-[var(--radius-card)] bg-[var(--color-surface)] border border-[var(--color-border)] px-4 py-2.5 shadow-[var(--shadow-modal)] text-sm text-[var(--color-text-secondary)]"
+            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 rounded-[var(--radius-card)] bg-[var(--color-surface)] border border-[var(--color-border)] px-4 py-2.5 shadow-[var(--shadow-modal)] text-sm"
           >
-            {saveStatus === 'saving' && <span className="animate-pulse">Saving…</span>}
-            {saveStatus === 'saved' && <span className="text-[var(--color-success)] font-medium">Saved</span>}
+            {saveStatus === 'saving' && (
+              <>
+                <div className="w-4 h-4 rounded-full border-2 border-[var(--color-primary)] border-t-transparent animate-spin" />
+                <span className="text-[var(--color-text-secondary)]">Saving...</span>
+              </>
+            )}
+            {saveStatus === 'saved' && (
+              <>
+                <div className="w-4 h-4 rounded-full bg-[var(--color-success)] flex items-center justify-center">
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span className="text-[var(--color-success)] font-medium">Saved</span>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

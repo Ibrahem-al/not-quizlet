@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { motion } from 'framer-motion';
-import { GripVertical, ImagePlus } from 'lucide-react';
+import { GripVertical, ImagePlus, AlertTriangle } from 'lucide-react';
 import { getEditorExtensions } from '../../lib/editorExtensions';
 import { sanitizeSearchQuery } from '../../lib/imageSearch';
 import { stripHtml, MAX_TERM_LENGTH, MAX_DEFINITION_LENGTH } from '../../lib/validation';
@@ -176,6 +176,13 @@ export function CardEditor({ card, index, isActive, isDuplicateTerm, onFocus, on
         <GripVertical className="w-3.5 h-3.5" aria-hidden />
         {index + 1}
       </div>
+
+      {isDuplicateTerm && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full text-xs font-medium px-3 py-1 bg-[var(--color-warning)] text-[var(--color-text)] shadow-sm">
+          <AlertTriangle className="w-3.5 h-3.5" aria-hidden />
+          Duplicate term
+        </div>
+      )}
 
       <Group orientation="horizontal" defaultLayout={defaultLayoutMap} onLayoutChanged={handleLayoutChanged} className="min-h-[140px]">
         <Panel id="term" defaultSize={layout[0]} minSize={20} maxSize={70} data-term-pane className={`flex flex-col min-h-0 ${shakeTerm ? 'studio-card-shake' : ''}`}>
