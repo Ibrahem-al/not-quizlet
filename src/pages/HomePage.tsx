@@ -88,8 +88,8 @@ export function HomePage() {
   );
 
   const headerRight = (
-    <div className="flex items-center gap-2 flex-wrap">
-      <div className="relative flex-1 sm:flex-initial min-w-[180px] max-w-[260px]">
+    <div className="flex items-center gap-2">
+      <div className="relative min-w-[180px] max-w-[260px]">
         <Search
           className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-tertiary)] pointer-events-none"
           aria-hidden
