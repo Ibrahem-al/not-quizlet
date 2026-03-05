@@ -160,9 +160,12 @@ export function TestMode({
       y += 8;
       missedCards.forEach((card) => {
         doc.setFontSize(10);
-        doc.text(`Term: ${card.term.replace(/<[^>]*>/g, '')}`, 20, y);
+        // Strip HTML tags for PDF export
+        const termText = card.term.replace(/<[^>]*>/g, '');
+        const defText = card.definition.replace(/<[^>]*>/g, '');
+        doc.text(`Term: ${termText}`, 20, y);
         y += 6;
-        doc.text(`Definition: ${card.definition}`, 20, y);
+        doc.text(`Definition: ${defText}`, 20, y);
         y += 10;
         if (y > 280) {
           doc.addPage();
@@ -235,7 +238,10 @@ export function TestMode({
                   key={card.id}
                   className="p-2 rounded bg-[var(--color-text-secondary)]/10 text-sm"
                 >
-                  <strong>{card.term.replace(/<[^>]*>/g, '')}</strong> — {card.definition}
+                  <div className="space-y-1">
+                    <div dangerouslySetInnerHTML={{ __html: card.term }} />
+                    <div className="text-[var(--color-text-secondary)]" dangerouslySetInnerHTML={{ __html: card.definition }} />
+                  </div>
                 </li>
               ))}
             </ul>
@@ -322,9 +328,10 @@ export function TestMode({
             transition={spring}
             className="space-y-6"
           >
-            <p className="text-lg font-medium text-[var(--color-text)]">
-              {current.card.term.replace(/<[^>]*>/g, '')}
-            </p>
+            <div
+              className="text-lg font-medium text-[var(--color-text)]"
+              dangerouslySetInnerHTML={{ __html: current.card.term }}
+            />
 
             {current.type === 'written' && (
               <div className="space-y-2">
@@ -344,10 +351,10 @@ export function TestMode({
                   <Button
                     key={i}
                     variant="secondary"
-                    className="justify-start text-left"
+                    className="justify-start text-left h-auto min-h-[44px] py-2"
                     onClick={() => submitMultiple(i)}
                   >
-                    {opt}
+                    <span dangerouslySetInnerHTML={{ __html: opt }} />
                   </Button>
                 ))}
               </div>
@@ -357,9 +364,10 @@ export function TestMode({
               <div className="flex gap-2">
                 <Button onClick={() => submitTrueFalse(true)}>True</Button>
                 <Button onClick={() => submitTrueFalse(false)}>False</Button>
-                <span className="self-center text-[var(--color-text-secondary)]">
-                  &quot;{current.options[0]}&quot;
-                </span>
+                <div
+                  className="self-center text-[var(--color-text-secondary)]"
+                  dangerouslySetInnerHTML={{ __html: `&quot;${current.options[0]}&quot;` }}
+                />
               </div>
             )}
 

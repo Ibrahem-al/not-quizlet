@@ -65,14 +65,13 @@ export function MatchTile({
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
-      <motion.span
-        className="text-sm text-[var(--color-text)] line-clamp-2 text-center block"
+      <motion.div
+        className="text-sm text-[var(--color-text)] line-clamp-2 text-center"
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         transition={spring}
-      >
-        {text}
-      </motion.span>
+        dangerouslySetInnerHTML={{ __html: text }}
+      />
     </div>
   );
 }

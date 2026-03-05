@@ -132,7 +132,7 @@ export function SetDetailPage() {
         setTimeout(() => setSaveStatus('idle'), 2000);
       });
     }
-  }, 500);
+  }, 2000);
 
   const applyCardUpdate = useCallback((cardId: string, updates: Partial<CardType>) => {
     setLocalSet((prev) => {

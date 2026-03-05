@@ -26,7 +26,7 @@ function buildTiles(cards: Card[], pairCount: number): MatchTileData[] {
   const selected = shuffle(cards).slice(0, pairCount);
   const tiles: MatchTileData[] = [];
   selected.forEach((card) => {
-    tiles.push({ cardId: card.id, text: card.term.replace(/<[^>]*>/g, ''), type: 'term' });
+    tiles.push({ cardId: card.id, text: card.term, type: 'term' });
     tiles.push({ cardId: card.id, text: card.definition, type: 'definition' });
   });
   return shuffle(tiles);

@@ -179,9 +179,10 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
               transition={spring}
               className="space-y-6"
             >
-              <p className="text-lg font-medium text-[var(--color-text)]">
-                {current.card.term}
-              </p>
+              <div
+                className="text-lg font-medium text-[var(--color-text)]"
+                dangerouslySetInnerHTML={{ __html: current.card.term }}
+              />
 
               {current.questionType === 'written' && (
                 <div className="space-y-2">
@@ -204,11 +205,11 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                     <motion.div key={i} whileTap={{ scale: 0.98 }} transition={spring}>
                       <Button
                         variant="secondary"
-                        className="w-full justify-start text-left"
+                        className="w-full justify-start text-left h-auto min-h-[44px] py-2"
                         onClick={() => submitMultiple(i)}
                         disabled={answered}
                       >
-                        {opt}
+                        <span dangerouslySetInnerHTML={{ __html: opt }} />
                       </Button>
                     </motion.div>
                   ))}
@@ -217,9 +218,9 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
 
               {current.questionType === 'truefalse' && current.options && (
                 <div className="space-y-3">
-                  <p className="text-[var(--color-text-secondary)]">
-                    {t('definition')}: &quot;{current.options[0]}&quot;
-                  </p>
+                  <div className="text-[var(--color-text-secondary)]">
+                    {t('definition')}: <span dangerouslySetInnerHTML={{ __html: current.options[0] }} />
+                  </div>
                   <p className="text-sm text-[var(--color-text)]">{t('isThisCorrect')}</p>
                   <div className="flex gap-2">
                     <Button
@@ -246,9 +247,11 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                   animate={{ opacity: 1 }}
                   className={`p-3 rounded-lg ${correct ? 'bg-[var(--color-success)]/20' : 'bg-[var(--color-danger)]/20'}`}
                 >
-                  <p className="text-sm text-[var(--color-text)]">
-                    {correct ? t('correct') : `${t('correctAnswer', { answer: current.card.definition })}`}
-                  </p>
+                  <div className="text-sm text-[var(--color-text)]">
+                    {correct ? t('correct') : (
+                      <span dangerouslySetInnerHTML={{ __html: `${t('correctAnswer', { answer: '' })} ${current.card.definition}` }} />
+                    )}
+                  </div>
                 </motion.div>
               )}
 
