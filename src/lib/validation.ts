@@ -67,18 +67,34 @@ function allCapsRatio(text: string): number {
   return upper / letters.length;
 }
 
+/** Check if HTML contains an image tag. */
+function hasImageInHtml(html: string): boolean {
+  return html.includes('<img');
+}
+
 /** Check if card has any meaningful content (text or image). */
 export function hasContent(card: Card): boolean {
   const termText = stripHtml(card.term);
   const defText = stripHtml(card.definition);
+  const termHasImage = hasImageInHtml(card.term);
+  const defHasImage = hasImageInHtml(card.definition);
   const hasImage = Boolean(card.imageData);
-  return (termText.length > 0 || defText.length > 0 || hasImage);
+  return (termText.length > 0 || defText.length > 0 || hasImage || termHasImage || defHasImage);
 }
 
-/** Allow empty term only when definition has content AND image is attached (image-only cards). */
-function allowsEmptyTerm(card: Card): boolean {
+/** Check if term has content (text or image). */
+function hasTermContent(card: Card): boolean {
+  const termText = stripHtml(card.term);
+  const termHasImage = hasImageInHtml(card.term);
+  return termText.length > 0 || termHasImage;
+}
+
+/** Check if definition has content (text or image). */
+function hasDefinitionContent(card: Card): boolean {
   const defText = stripHtml(card.definition);
-  return defText.length > 0 && Boolean(card.imageData);
+  const defHasImage = hasImageInHtml(card.definition);
+  const hasImage = Boolean(card.imageData);
+  return defText.length > 0 || defHasImage || hasImage;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +104,8 @@ function allowsEmptyTerm(card: Card): boolean {
 export type CardValidationCode =
   | 'EMPTY_TERM'
   | 'EMPTY_CONTENT'
+  | 'EMPTY_TERM_CONTENT'
+  | 'EMPTY_DEFINITION_CONTENT'
   | 'MAX_LENGTH_EXCEEDED'
   | 'SUSPICIOUSLY_SIMILAR'
   | 'URL_AS_CONTENT'
@@ -109,6 +127,8 @@ export interface ValidationResult {
 const MESSAGES: Record<CardValidationCode, string> = {
   EMPTY_TERM: 'Every card needs a question or prompt.',
   EMPTY_CONTENT: 'Both term and definition are empty.',
+  EMPTY_TERM_CONTENT: 'Term needs text or an image.',
+  EMPTY_DEFINITION_CONTENT: 'Definition needs text or an image.',
   MAX_LENGTH_EXCEEDED: 'Text is too long. Shorten or split into more cards.',
   SUSPICIOUSLY_SIMILAR: 'Term and definition look very similar. Continue?',
   URL_AS_CONTENT: 'Did you mean to embed this as a link?',
@@ -132,12 +152,21 @@ export function validateCard(card: Card): ValidationResult {
     return { valid: false, errors };
   }
 
-  // --- Hard: EMPTY_TERM (unless image-only card)
-  if (termLen === 0 && !allowsEmptyTerm(card)) {
+  // --- Hard: EMPTY_TERM_CONTENT (term must have text or image)
+  if (!hasTermContent(card)) {
     errors.push({
-      code: 'EMPTY_TERM',
+      code: 'EMPTY_TERM_CONTENT',
       severity: 'hard',
-      message: MESSAGES.EMPTY_TERM,
+      message: MESSAGES.EMPTY_TERM_CONTENT,
+    });
+  }
+
+  // --- Hard: EMPTY_DEFINITION_CONTENT (definition must have text or image)
+  if (!hasDefinitionContent(card)) {
+    errors.push({
+      code: 'EMPTY_DEFINITION_CONTENT',
+      severity: 'hard',
+      message: MESSAGES.EMPTY_DEFINITION_CONTENT,
     });
   }
 

@@ -29,7 +29,7 @@ import { useSetPattern } from '../hooks/useSetPattern';
 import { useStudyStore } from '../stores/studyStore';
 import { useAuthStore } from '../stores/authStore';
 import { useTranslation } from '../hooks/useTranslation';
-import { validateSet } from '../lib/validation';
+import { validateSet, validateCard, type ValidationError } from '../lib/validation';
 import { parseImportText } from '../lib/importText';
 import { uuid, timestamp } from '../lib/utils';
 import { PhotoImportModal } from '../components/import/PhotoImportModal';
@@ -79,6 +79,7 @@ export function SetDetailPage() {
   const [editingMeta, setEditingMeta] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [cardErrors, setCardErrors] = useState<Record<string, ValidationError[]>>({});
   const moreRef = useRef<HTMLDivElement>(null);
 
   localSetRef.current = localSet;
@@ -102,6 +103,28 @@ export function SetDetailPage() {
   const debouncedSave = useDebouncedCallback(() => {
     const payload = localSetRef.current;
     if (payload) {
+      // Validate all cards before saving
+      const errors: Record<string, ValidationError[]> = {};
+      let hasHardErrors = false;
+      
+      for (const card of payload.cards) {
+        const result = validateCard(card);
+        if (!result.valid) {
+          errors[card.id] = result.errors;
+          if (result.errors.some(e => e.severity === 'hard')) {
+            hasHardErrors = true;
+          }
+        }
+      }
+      
+      setCardErrors(errors);
+      
+      // Don't save if there are hard errors
+      if (hasHardErrors) {
+        setToast('Please fix card errors before saving');
+        return;
+      }
+      
       setSaveStatus('saving');
       replaceSet({ ...payload, updatedAt: timestamp() }).then(() => {
         setDirty(false);
@@ -527,6 +550,7 @@ export function SetDetailPage() {
                 onEnterInDefinition={() => handleAddCard(index + 1)}
                 onFocusNextCard={() => setFocusedCardIndex(index + 1 < cards.length ? index + 1 : null)}
                 onFocusPrevCard={() => setFocusedCardIndex(index > 0 ? index - 1 : null)}
+                validationErrors={cardErrors[card.id]}
               />
             ))}
           </ul>

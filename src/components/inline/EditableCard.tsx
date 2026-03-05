@@ -12,7 +12,7 @@ import { useDebouncedCallback } from 'use-debounce';
 import { getEditorExtensions } from '../../lib/editorExtensions';
 import type { SetPattern } from '../../lib/ContextAnalyzer';
 import { getAIGenerator } from '../../lib/ai';
-import { stripHtml } from '../../lib/validation';
+import { stripHtml, type ValidationError } from '../../lib/validation';
 import type { Card } from '../../types';
 import { ImageSearchModal } from '../editor/ImageSearchModal';
 import { sanitizeSearchQuery } from '../../lib/imageSearch';
@@ -34,6 +34,7 @@ interface EditableCardProps {
   /** When equal to card index, focus the term field (e.g. after adding new card or Tab from previous). */
   focusedCardIndex?: number | null;
   cardIndex: number;
+  validationErrors?: ValidationError[];
 }
 
 export function EditableCard({
@@ -48,12 +49,18 @@ export function EditableCard({
   dragHandleProps,
   focusedCardIndex,
   cardIndex,
+  validationErrors = [],
 }: EditableCardProps) {
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [showAiBadge, setShowAiBadge] = useState(false);
   const defWrapperRef = useRef<HTMLDivElement>(null);
+
+  const hasErrors = validationErrors.length > 0;
+  const hardErrors = validationErrors.filter(e => e.severity === 'hard');
+  const termErrors = hardErrors.filter(e => !e.field || e.field === 'term' || e.code === 'EMPTY_TERM_CONTENT');
+  const defErrors = hardErrors.filter(e => e.field === 'definition' || e.code === 'EMPTY_DEFINITION_CONTENT');
 
   const syncTerm = useCallback((html: string) => onUpdate({ term: html }), [onUpdate]);
   const syncDef = useCallback((html: string) => onUpdate({ definition: html }), [onUpdate]);
@@ -175,7 +182,7 @@ export function EditableCard({
   return (
     <motion.li
       layout
-      className="group/card relative rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] hover:border-[var(--color-text-secondary)]/25 focus-within:border-[var(--color-border-focus)] focus-within:ring-1 focus-within:ring-[var(--color-primary)]/20 transition-colors duration-[var(--duration-fast)]"
+      className={`group/card relative rounded-[var(--radius-card)] border ${hasErrors ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] shadow-[var(--shadow-sm)] hover:border-[var(--color-text-secondary)]/25 focus-within:border-[var(--color-border-focus)] focus-within:ring-1 focus-within:ring-[var(--color-primary)]/20 transition-colors duration-[var(--duration-fast)]`}
     >
       <div className="flex items-stretch min-h-[52px]">
         {dragHandleProps && (
@@ -189,23 +196,23 @@ export function EditableCard({
         )}
         <div className="flex-1 grid grid-cols-[1fr_1fr] gap-2 min-w-0">
           <div
-            className="min-h-[44px] px-3 py-2 rounded-l-md focus-within:bg-[var(--color-background)]/50"
+            className={`min-h-[44px] px-3 py-2 rounded-l-md focus-within:bg-[var(--color-background)]/50 ${termErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}
             data-term-pane
           >
-            <span className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] mb-1" aria-hidden>
-              Term
+            <span className={`block text-[10px] font-semibold uppercase tracking-wider mb-1 ${termErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
+              Term {termErrors.length > 0 && '(required)'}
             </span>
-            <div className="min-h-[36px] rounded-[var(--radius-button)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]">
+            <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${termErrors.length > 0 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]`}>
               <EditorContent editor={termEditor} />
             </div>
           </div>
           <div
             ref={defWrapperRef}
-            className="relative min-h-[44px] px-3 py-2 rounded-r-md focus-within:bg-[var(--color-background)]/50"
+            className={`relative min-h-[44px] px-3 py-2 rounded-r-md focus-within:bg-[var(--color-background)]/50 ${defErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}
             data-def-pane
           >
-            <span className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] mb-1" aria-hidden>
-              Definition
+            <span className={`block text-[10px] font-semibold uppercase tracking-wider mb-1 ${defErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
+              Definition {defErrors.length > 0 && '(required)'}
             </span>
             {aiSuggestion && defEmpty && (
               <span
@@ -220,7 +227,7 @@ export function EditableCard({
                 AI
               </span>
             )}
-            <div className="min-h-[36px] rounded-[var(--radius-button)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]">
+            <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${defErrors.length > 0 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]`}>
               <EditorContent editor={defEditor} />
             </div>
           </div>
@@ -258,6 +265,17 @@ export function EditableCard({
           </button>
         </div>
       </div>
+      {hardErrors.length > 0 && (
+        <div className="px-3 py-2 bg-[var(--color-danger)]/5 border-t border-[var(--color-danger)]/20">
+          <div className="flex flex-col gap-1">
+            {hardErrors.map((error, idx) => (
+              <span key={idx} className="text-xs text-[var(--color-danger)]">
+                {error.message}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <ImageSearchModal
         open={imageModalOpen}
         onClose={() => setImageModalOpen(false)}
