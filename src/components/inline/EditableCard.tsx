@@ -27,7 +27,6 @@ interface EditableCardProps {
   canSuggest: boolean;
   onUpdate: (updates: Partial<Card>) => void;
   onDelete: () => void;
-  onAddImage: (base64: string) => void;
   onEnterInDefinition: () => void;
   onFocusNextCard: () => void;
   onFocusPrevCard?: () => void;
@@ -43,7 +42,6 @@ export function EditableCard({
   canSuggest,
   onUpdate,
   onDelete,
-  onAddImage,
   onEnterInDefinition,
   onFocusNextCard,
   onFocusPrevCard: _onFocusPrevCard,
@@ -260,18 +258,11 @@ export function EditableCard({
           </button>
         </div>
       </div>
-      {card.imageData && (
-        <img
-          src={card.imageData}
-          alt=""
-          className="mt-1 ml-2 max-h-20 rounded object-contain"
-        />
-      )}
       <ImageSearchModal
         open={imageModalOpen}
         onClose={() => setImageModalOpen(false)}
         onSelect={(base64) => {
-          onAddImage(base64);
+          defEditor?.chain().focus().insertContent(`<img src="${base64}" alt="" />`).run();
           setImageModalOpen(false);
         }}
         initialQuery={sanitizeSearchQuery(card.term || '')}

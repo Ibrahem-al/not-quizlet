@@ -524,7 +524,6 @@ export function SetDetailPage() {
                 focusedCardIndex={focusedCardIndex}
                 onUpdate={(updates) => applyCardUpdate(card.id, updates)}
                 onDelete={() => handleDeleteCard(card.id)}
-                onAddImage={(base64) => applyCardUpdate(card.id, { imageData: base64 })}
                 onEnterInDefinition={() => handleAddCard(index + 1)}
                 onFocusNextCard={() => setFocusedCardIndex(index + 1 < cards.length ? index + 1 : null)}
                 onFocusPrevCard={() => setFocusedCardIndex(index > 0 ? index - 1 : null)}
