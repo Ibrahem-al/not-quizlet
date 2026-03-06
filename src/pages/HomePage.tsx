@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Fuse from 'fuse.js';
-import { Search, Download, Upload, MoreVertical, BarChart3, BookOpen, Layers, Trash2, X, Moon, Sun, Languages } from 'lucide-react';
+import { Search, Download, Upload, MoreVertical, BarChart3, BookOpen, Layers, Trash2, Moon, Sun, Languages } from 'lucide-react';
 import { Card, Button } from '../components/ui';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
@@ -9,7 +9,7 @@ import { AppLayout, NewSetButton } from '../components/layout/AppLayout';
 import { FolderSidebar } from '../components/folders/FolderSidebar';
 import { useStudyStore } from '../stores/studyStore';
 import { useFolderStore } from '../stores/folderStore';
-import { useAuthStore } from '../stores/authStore';
+
 import { useThemeStore } from '../stores/themeStore';
 import { useLanguageStore } from '../stores/languageStore';
 import { useTranslation } from '../hooks/useTranslation';
@@ -67,8 +67,6 @@ function LanguageToggleMenuItem({ onClose }: { onClose: () => void }) {
 export function HomePage() {
   const { sets, loadSets, loadSettings, loaded, deleteSet } = useStudyStore();
   const { currentFolderId, setCurrentFolder, loadFolders } = useFolderStore();
-  const { user } = useAuthStore();
-  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [importFile, setImportFile] = useState<HTMLInputElement | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);

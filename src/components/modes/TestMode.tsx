@@ -84,25 +84,20 @@ function generateQuestions(cards: Card[], config: TestConfig): TestQuestion[] {
 
     // Determine answer direction based on content
     let answerWith: 'term' | 'definition';
-    let questionFrom: 'term' | 'definition';
 
     // Smart logic for handling pictures vs text
     if (isTermImageOnly && isDefImageOnly) {
       // Both sides are pictures only - skip written questions
       answerWith = config.answerDirection === 'term-to-definition' ? 'definition' : 'term';
-      questionFrom = config.answerDirection === 'term-to-definition' ? 'term' : 'definition';
     } else if (isTermImageOnly && defHasText) {
       // Term is picture-only, definition has text -> force show term pic, write definition
       answerWith = 'definition';
-      questionFrom = 'term';
     } else if (isDefImageOnly && termHasText) {
       // Definition is picture-only, term has text -> force show definition pic, write term
       answerWith = 'term';
-      questionFrom = 'definition';
     } else {
       // Both have text (may also have pictures) -> use user's preference
       answerWith = config.answerDirection === 'term-to-definition' ? 'definition' : 'term';
-      questionFrom = config.answerDirection === 'term-to-definition' ? 'term' : 'definition';
     }
 
     // For written questions: skip if both sides are image-only
