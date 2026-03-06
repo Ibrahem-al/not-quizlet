@@ -12,6 +12,7 @@ interface ShareButtonProps {
   className?: string;
   size?: 'sm' | 'md' | 'lg';
   variant?: 'default' | 'ghost' | 'outline';
+  onSharingModeChange?: (mode: SharingMode) => void;
 }
 
 const modeConfig: Record<SharingMode, { icon: typeof Lock; label: 'private' | 'restricted' | 'linkSharing' | 'public'; color: string }> = {
@@ -29,6 +30,7 @@ export function ShareButton({
   className = '',
   size = 'md',
   variant = 'default',
+  onSharingModeChange,
 }: ShareButtonProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -71,8 +73,10 @@ export function ShareButton({
         itemType={itemType}
         itemId={itemId}
         itemName={itemName}
+        sharingMode={sharingMode}
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
+        onSharingModeChange={onSharingModeChange}
       />
     </>
   );

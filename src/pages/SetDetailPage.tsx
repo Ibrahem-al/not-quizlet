@@ -369,6 +369,15 @@ export function SetDetailPage() {
                 itemId={displaySet.id}
                 itemName={displaySet.title}
                 sharingMode={displaySet.sharingMode || 'private'}
+                onSharingModeChange={(mode) => {
+                  // Update local state to reflect the new sharing mode
+                  setLocalSet((prev) => {
+                    if (!prev) return prev;
+                    return { ...prev, sharingMode: mode, visibility: mode === 'public' ? 'public' : 'private' };
+                  });
+                  setDirty(true);
+                  debouncedSave();
+                }}
               />
             </div>
           </section>

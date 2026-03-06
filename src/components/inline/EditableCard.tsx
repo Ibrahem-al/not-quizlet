@@ -52,10 +52,16 @@ export function EditableCard({
   validationErrors = [],
 }: EditableCardProps) {
   const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [imageTarget, setImageTarget] = useState<'term' | 'definition' | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [showAiBadge, setShowAiBadge] = useState(false);
   const defWrapperRef = useRef<HTMLDivElement>(null);
+
+  const openImageModal = (target: 'term' | 'definition') => {
+    setImageTarget(target);
+    setImageModalOpen(true);
+  };
 
   const hasErrors = validationErrors.length > 0;
   const hardErrors = validationErrors.filter(e => e.severity === 'hard');
@@ -199,9 +205,20 @@ export function EditableCard({
             className={`min-h-[44px] px-3 py-2 rounded-l-md focus-within:bg-[var(--color-background)]/50 ${termErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}
             data-term-pane
           >
-            <span className={`block text-[10px] font-semibold uppercase tracking-wider mb-1 ${termErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
-              Term {termErrors.length > 0 && '(required)'}
-            </span>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`block text-[10px] font-semibold uppercase tracking-wider ${termErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
+                Term {termErrors.length > 0 && '(required)'}
+              </span>
+              <button
+                type="button"
+                onClick={() => openImageModal('term')}
+                className="p-1 rounded text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] opacity-0 group-hover/card:opacity-100 transition-opacity"
+                title="Add image to term"
+                aria-label="Add image to term"
+              >
+                <ImagePlus className="w-3 h-3" />
+              </button>
+            </div>
             <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${termErrors.length > 0 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]`}>
               <EditorContent editor={termEditor} />
             </div>
@@ -211,9 +228,27 @@ export function EditableCard({
             className={`relative min-h-[44px] px-3 py-2 rounded-r-md focus-within:bg-[var(--color-background)]/50 ${defErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}
             data-def-pane
           >
-            <span className={`block text-[10px] font-semibold uppercase tracking-wider mb-1 ${defErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
-              Definition {defErrors.length > 0 && '(required)'}
-            </span>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`block text-[10px] font-semibold uppercase tracking-wider ${defErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
+                Definition {defErrors.length > 0 && '(required)'}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => openImageModal('definition')}
+                  className="p-1 rounded text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] opacity-0 group-hover/card:opacity-100 transition-opacity"
+                  title="Add image to definition"
+                  aria-label="Add image to definition"
+                >
+                  <ImagePlus className="w-3 h-3" />
+                </button>
+                {showAiBadge && (
+                  <span className="text-[10px] text-[var(--color-primary)] animate-pulse">
+                    AI
+                  </span>
+                )}
+              </div>
+            </div>
             {aiSuggestion && defEmpty && (
               <span
                 className="pointer-events-none absolute left-3 top-2 right-3 text-[var(--color-text-secondary)] opacity-50 italic text-sm"
@@ -222,26 +257,12 @@ export function EditableCard({
                 {aiSuggestion}
               </span>
             )}
-            {showAiBadge && (
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--color-primary)] animate-pulse">
-                AI
-              </span>
-            )}
             <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${defErrors.length > 0 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]`}>
               <EditorContent editor={defEditor} />
             </div>
           </div>
         </div>
         <div className="flex items-center gap-0.5 pr-2 opacity-60 group-hover/card:opacity-100 transition-opacity">
-          <button
-            type="button"
-            onClick={() => setImageModalOpen(true)}
-            className="p-1.5 rounded text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)]"
-            title="Add image"
-            aria-label="Add image"
-          >
-            <ImagePlus className="w-4 h-4" />
-          </button>
           {canSuggest && defEmpty && (
             <button
               type="button"
@@ -278,10 +299,15 @@ export function EditableCard({
       )}
       <ImageSearchModal
         open={imageModalOpen}
-        onClose={() => setImageModalOpen(false)}
-        onSelect={(base64) => {
-          defEditor?.chain().focus().insertContent(`<img src="${base64}" alt="" />`).run();
+        onClose={() => {
           setImageModalOpen(false);
+          setImageTarget(null);
+        }}
+        onSelect={(base64) => {
+          const targetEditor = imageTarget === 'term' ? termEditor : defEditor;
+          targetEditor?.chain().focus().insertContent(`<img src="${base64}" alt="" />`).run();
+          setImageModalOpen(false);
+          setImageTarget(null);
         }}
         initialQuery={sanitizeSearchQuery(card.term || '')}
       />

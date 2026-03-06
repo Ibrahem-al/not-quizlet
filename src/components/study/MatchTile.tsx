@@ -66,7 +66,7 @@ export function MatchTile({
       onDragOver={handleDragOver}
     >
       <motion.div
-        className="text-sm text-[var(--color-text)] line-clamp-2 text-center"
+        className="text-sm text-[var(--color-text)] line-clamp-2 text-center study-content"
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         transition={spring}

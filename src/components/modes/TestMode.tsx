@@ -4,11 +4,13 @@ import { jsPDF } from 'jspdf';
 import { Button } from '../ui';
 import { Input } from '../ui';
 import { shuffle, gradeWrittenAnswer } from '../../lib/algorithms';
+import { useTranslation } from '../../hooks/useTranslation';
 import type { Card } from '../../types';
 
 const spring = { type: 'spring' as const, stiffness: 300, damping: 30 };
 
 type TestQuestionType = 'written' | 'multiple' | 'matching' | 'truefalse';
+type AnswerDirection = 'term-to-definition' | 'definition-to-term';
 
 interface TestConfig {
   written: boolean;
@@ -16,6 +18,7 @@ interface TestConfig {
   matching: boolean;
   truefalse: boolean;
   questionCount: number;
+  answerDirection: AnswerDirection;
 }
 
 interface TestQuestion {
@@ -24,53 +27,130 @@ interface TestQuestion {
   options?: string[];
   correctOption?: number;
   isTrue?: boolean;
+  answerWith: 'term' | 'definition';
 }
 
 interface TestModeProps {
   cards: Card[];
   setTitle: string;
   onExit: () => void;
-  onStudyMissed?: (cardIds: string[]) => void;
+  onStudyMissed?: (missedCardIds: string[]) => void;
 }
 
-function buildTestQuestions(
-  cards: Card[],
-  config: TestConfig
-): TestQuestion[] {
-  if (cards.length === 0) return [];
+/**
+ * Check if a string contains only an image (no meaningful text content).
+ */
+function isImageOnly(content: string): boolean {
+  if (!content) return false;
+  // Remove img tags and check if there's any text left
+  const withoutImages = content.replace(/<img[^>]*>/gi, '');
+  const textContent = withoutImages.replace(/<[^>]*>/g, '').trim();
+  return textContent === '' && content.includes('<img');
+}
+
+/**
+ * Get the text content for grading (remove HTML tags).
+ */
+function getTextContent(content: string): string {
+  return content.replace(/<[^>]*>/g, '').trim();
+}
+
+/**
+ * Check if a card has any text content suitable for written answers.
+ */
+function hasTextContent(content: string): boolean {
+  const textContent = content.replace(/<[^>]*>/g, '').trim();
+  return textContent.length > 0;
+}
+
+function generateQuestions(cards: Card[], config: TestConfig): TestQuestion[] {
   const types: TestQuestionType[] = [];
   if (config.written) types.push('written');
   if (config.multiple) types.push('multiple');
   if (config.matching) types.push('matching');
   if (config.truefalse) types.push('truefalse');
-  if (types.length === 0) types.push('written', 'multiple');
 
-  const count = Math.min(config.questionCount || cards.length, cards.length);
-  const shuffled = shuffle(cards).slice(0, count);
+  if (types.length === 0) types.push('written');
+
   const questions: TestQuestion[] = [];
+  const selectedCards = shuffle(cards).slice(0, config.questionCount);
 
-  shuffled.forEach((card) => {
-    const type = types[Math.floor(Math.random() * types.length)];
+  selectedCards.forEach((card) => {
+    // Check what content each side has
+    const isTermImageOnly = isImageOnly(card.term);
+    const isDefImageOnly = isImageOnly(card.definition);
+    const termHasText = hasTextContent(card.term);
+    const defHasText = hasTextContent(card.definition);
+
+    // Determine answer direction based on content
+    let answerWith: 'term' | 'definition';
+    let questionFrom: 'term' | 'definition';
+
+    // Smart logic for handling pictures vs text
+    if (isTermImageOnly && isDefImageOnly) {
+      // Both sides are pictures only - skip written questions
+      answerWith = config.answerDirection === 'term-to-definition' ? 'definition' : 'term';
+      questionFrom = config.answerDirection === 'term-to-definition' ? 'term' : 'definition';
+    } else if (isTermImageOnly && defHasText) {
+      // Term is picture-only, definition has text -> force show term pic, write definition
+      answerWith = 'definition';
+      questionFrom = 'term';
+    } else if (isDefImageOnly && termHasText) {
+      // Definition is picture-only, term has text -> force show definition pic, write term
+      answerWith = 'term';
+      questionFrom = 'definition';
+    } else {
+      // Both have text (may also have pictures) -> use user's preference
+      answerWith = config.answerDirection === 'term-to-definition' ? 'definition' : 'term';
+      questionFrom = config.answerDirection === 'term-to-definition' ? 'term' : 'definition';
+    }
+
+    // For written questions: skip if both sides are image-only
+    let availableTypes = types;
+    if (isTermImageOnly && isDefImageOnly) {
+      availableTypes = types.filter(t => t !== 'written');
+      if (availableTypes.length === 0) return; // Skip this card entirely if no valid question types
+    }
+
+    const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+
     if (type === 'multiple') {
       const others = cards.filter((c) => c.id !== card.id);
-      const wrong = shuffle(others).slice(0, 3).map((c) => c.definition);
-      const options = shuffle([card.definition, ...wrong]);
+      // Use the same side for wrong answers as the answer side
+      const wrong = shuffle(others).slice(0, 3).map((c) => 
+        answerWith === 'term' ? c.term : c.definition
+      );
+      const correct = answerWith === 'term' ? card.term : card.definition;
+      const options = shuffle([correct, ...wrong]);
       questions.push({
         card,
         type,
         options,
-        correctOption: options.indexOf(card.definition),
+        correctOption: options.indexOf(correct),
+        answerWith,
       });
     } else if (type === 'truefalse') {
       const isTrue = Math.random() > 0.5;
-      let def = card.definition;
-      if (!isTrue && cards.length > 1) {
+      let shownContent: string;
+      const answerContent = answerWith === 'term' ? card.term : card.definition;
+      
+      if (isTrue) {
+        shownContent = answerContent;
+      } else if (cards.length > 1) {
         const other = shuffle(cards.filter((c) => c.id !== card.id))[0];
-        def = other?.definition ?? card.definition;
+        shownContent = answerWith === 'term' ? other.term : other.definition;
+      } else {
+        shownContent = answerContent;
       }
-      questions.push({ card, type, options: [def], isTrue });
+      questions.push({ 
+        card, 
+        type, 
+        options: [shownContent], 
+        isTrue,
+        answerWith,
+      });
     } else {
-      questions.push({ card, type });
+      questions.push({ card, type, answerWith });
     }
   });
 
@@ -83,12 +163,14 @@ export function TestMode({
   onExit,
   onStudyMissed,
 }: TestModeProps) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<TestConfig>({
     written: true,
     multiple: true,
     matching: false,
     truefalse: true,
     questionCount: Math.min(20, cards.length) || 10,
+    answerDirection: 'term-to-definition',
   });
   const [started, setStarted] = useState(false);
   const [questions, setQuestions] = useState<TestQuestion[]>([]);
@@ -97,38 +179,37 @@ export function TestMode({
   const [writtenInput, setWrittenInput] = useState('');
   const [showResults, setShowResults] = useState(false);
 
-  const current = questions[index];
   const total = questions.length;
+  const current = questions[index];
   const correctCount = Array.from(answers.values()).filter(Boolean).length;
-  const missedCards = useMemo(() => {
-    return questions
-      .filter((_, i) => !answers.get(i))
-      .map((q) => q.card);
-  }, [questions, answers]);
   const accuracy = total > 0 ? Math.round((correctCount / total) * 100) : 0;
 
   const startTest = useCallback(() => {
-    const q = buildTestQuestions(cards, config);
-    setQuestions(q);
+    const generated = generateQuestions(cards, config);
+    setQuestions(generated);
+    setStarted(true);
     setIndex(0);
     setAnswers(new Map());
-    setStarted(true);
     setShowResults(false);
   }, [cards, config]);
 
   const submitWritten = useCallback(() => {
-    if (!current || current.type !== 'written') return;
-    const ok = gradeWrittenAnswer(current.card.definition, writtenInput);
+    if (!current) return;
+    // Grade based on what the user should answer with
+    const correctContent = current.answerWith === 'term' 
+      ? current.card.term 
+      : current.card.definition;
+    const ok = gradeWrittenAnswer(writtenInput, getTextContent(correctContent));
     setAnswers((prev) => new Map(prev).set(index, ok));
     setWrittenInput('');
     if (index < total - 1) setIndex((i) => i + 1);
     else setShowResults(true);
-  }, [current, index, total, writtenInput]);
+  }, [current, writtenInput, index, total]);
 
   const submitMultiple = useCallback(
-    (choiceIndex: number) => {
-      if (!current || current.type !== 'multiple' || current.correctOption === undefined) return;
-      const ok = choiceIndex === current.correctOption;
+    (optionIndex: number) => {
+      if (!current || current.type !== 'multiple') return;
+      const ok = optionIndex === current.correctOption;
       setAnswers((prev) => new Map(prev).set(index, ok));
       if (index < total - 1) setIndex((i) => i + 1);
       else setShowResults(true);
@@ -146,6 +227,13 @@ export function TestMode({
     },
     [current, index, total]
   );
+
+  const missedCards = useMemo(() => {
+    return questions
+      .map((q, i) => ({ card: q.card, correct: answers.get(i) }))
+      .filter((x) => !x.correct)
+      .map((x) => x.card);
+  }, [questions, answers]);
 
   const exportPdf = useCallback(() => {
     const doc = new jsPDF();
@@ -238,7 +326,7 @@ export function TestMode({
                   key={card.id}
                   className="p-2 rounded bg-[var(--color-text-secondary)]/10 text-sm"
                 >
-                  <div className="space-y-1">
+                  <div className="space-y-1 study-content">
                     <div dangerouslySetInnerHTML={{ __html: card.term }} />
                     <div className="text-[var(--color-text-secondary)]" dangerouslySetInnerHTML={{ __html: card.definition }} />
                   </div>
@@ -247,19 +335,21 @@ export function TestMode({
             </ul>
             {onStudyMissed && (
               <Button
-                variant="secondary"
                 onClick={() => onStudyMissed(missedCards.map((c) => c.id))}
+                className="w-full"
               >
-                Study These
+                Study Missed Cards
               </Button>
             )}
           </div>
         )}
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={exportPdf}>
+          <Button onClick={exportPdf} variant="secondary" className="flex-1">
             Export PDF
           </Button>
-          <Button onClick={onExit}>Back to set</Button>
+          <Button onClick={onExit} className="flex-1">
+            Exit
+          </Button>
         </div>
       </motion.div>
     );
@@ -268,44 +358,100 @@ export function TestMode({
   if (!started) {
     return (
       <div className="max-w-md mx-auto p-6 space-y-6">
-        <h2 className="text-xl font-bold text-[var(--color-text)]">Test options</h2>
-        <div className="space-y-2">
-          {(['written', 'multiple', 'matching', 'truefalse'] as const).map((key) => (
-            <label key={key} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={config[key]}
-                onChange={(e) => setConfig((c) => ({ ...c, [key]: e.target.checked }))}
-                className="rounded"
-              />
-              <span className="text-[var(--color-text)] capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+        <h2 className="text-xl font-bold text-[var(--color-text)]">Test Configuration</h2>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-[var(--color-text)]">
+              Answer with
             </label>
-          ))}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, answerDirection: 'term-to-definition' }))}
+                className={`flex-1 py-2 px-3 rounded-lg border text-sm transition-colors ${
+                  config.answerDirection === 'term-to-definition'
+                    ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                    : 'bg-[var(--color-background)] text-[var(--color-text)] border-[var(--color-border)] hover:bg-[var(--color-primary-muted)]'
+                }`}
+              >
+                Definition
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, answerDirection: 'definition-to-term' }))}
+                className={`flex-1 py-2 px-3 rounded-lg border text-sm transition-colors ${
+                  config.answerDirection === 'definition-to-term'
+                    ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                    : 'bg-[var(--color-background)] text-[var(--color-text)] border-[var(--color-border)] hover:bg-[var(--color-primary-muted)]'
+                }`}
+              >
+                Term
+              </button>
+            </div>
+            <p className="text-xs text-[var(--color-text-secondary)]">
+              Choose whether to answer with the term or definition
+            </p>
+          </div>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={config.written}
+              onChange={(e) => setConfig((c) => ({ ...c, written: e.target.checked }))}
+            />
+            <span className="text-[var(--color-text)]">Written answers</span>
+          </label>
+          <p className="text-xs text-[var(--color-text-secondary)] ml-6">
+            Note: If one side is a picture and the other has text, you'll type the text. Cards with only pictures are skipped.
+          </p>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={config.multiple}
+              onChange={(e) => setConfig((c) => ({ ...c, multiple: e.target.checked }))}
+            />
+            <span className="text-[var(--color-text)]">Multiple choice</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={config.truefalse}
+              onChange={(e) => setConfig((c) => ({ ...c, truefalse: e.target.checked }))}
+            />
+            <span className="text-[var(--color-text)]">True / False</span>
+          </label>
+          <div className="pt-2">
+            <label className="block text-sm text-[var(--color-text-secondary)] mb-1">
+              Question count: {config.questionCount}
+            </label>
+            <input
+              type="range"
+              min={5}
+              max={Math.min(cards.length, 50)}
+              value={config.questionCount}
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, questionCount: parseInt(e.target.value, 10) }))
+              }
+              className="w-full"
+            />
+          </div>
         </div>
-        <Input
-          label="Number of questions"
-          type="number"
-          min={1}
-          max={cards.length}
-          value={String(config.questionCount)}
-          onChange={(e) => {
-            const n = parseInt(e.target.value, 10);
-            if (!Number.isNaN(n))
-              setConfig((c) => ({
-                ...c,
-                questionCount: Math.min(cards.length, Math.max(1, n)),
-              }));
-          }}
-        />
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={onExit}>
-            Back
+          <Button onClick={startTest} className="flex-1">
+            Start Test
           </Button>
-          <Button onClick={startTest}>Start test</Button>
+          <Button onClick={onExit} variant="ghost">
+            Exit
+          </Button>
         </div>
       </div>
     );
   }
+
+  // Get the content to show as the question prompt
+  const questionPrompt = current 
+    ? (current.answerWith === 'definition' ? current.card.term : current.card.definition)
+    : '';
 
   return (
     <div className="min-h-screen bg-[var(--color-background)]">
@@ -328,20 +474,40 @@ export function TestMode({
             transition={spring}
             className="space-y-6"
           >
-            <div
-              className="text-lg font-medium text-[var(--color-text)]"
-              dangerouslySetInnerHTML={{ __html: current.card.term }}
-            />
+            {/* Show prompt at top for multiple choice only (written and truefalse have their own layouts) */}
+            {current.type === 'multiple' && (
+              <div
+                className="text-lg font-medium text-[var(--color-text)] study-content"
+                dangerouslySetInnerHTML={{ __html: questionPrompt }}
+              />
+            )}
 
             {current.type === 'written' && (
-              <div className="space-y-2">
-                <Input
-                  placeholder="Your answer..."
-                  value={writtenInput}
-                  onChange={(e) => setWrittenInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && submitWritten()}
-                />
-                <Button onClick={submitWritten}>Submit</Button>
+              <div className="space-y-4">
+                {/* Show what the user is answering based on */}
+                <div className="p-4 rounded-lg bg-[var(--color-primary-muted)]/30 border border-[var(--color-border)]">
+                  <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
+                    {current.answerWith === 'definition' ? 'Term' : 'Definition'}
+                  </p>
+                  <div 
+                    className="text-lg font-medium text-[var(--color-text)] study-content"
+                    dangerouslySetInnerHTML={{ __html: questionPrompt }}
+                  />
+                </div>
+                
+                {/* Input area */}
+                <div className="space-y-2">
+                  <p className="text-sm text-[var(--color-text-secondary)]">
+                    Type the {current.answerWith}:
+                  </p>
+                  <Input
+                    placeholder={`Enter the ${current.answerWith}...`}
+                    value={writtenInput}
+                    onChange={(e) => setWrittenInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && submitWritten()}
+                  />
+                  <Button onClick={submitWritten}>Submit</Button>
+                </div>
               </div>
             )}
 
@@ -354,20 +520,69 @@ export function TestMode({
                     className="justify-start text-left h-auto min-h-[44px] py-2"
                     onClick={() => submitMultiple(i)}
                   >
-                    <span dangerouslySetInnerHTML={{ __html: opt }} />
+                    <span className="study-content" dangerouslySetInnerHTML={{ __html: opt }} />
                   </Button>
                 ))}
               </div>
             )}
 
             {current.type === 'truefalse' && current.options && (
-              <div className="flex gap-2">
-                <Button onClick={() => submitTrueFalse(true)}>True</Button>
-                <Button onClick={() => submitTrueFalse(false)}>False</Button>
-                <div
-                  className="self-center text-[var(--color-text-secondary)]"
-                  dangerouslySetInnerHTML={{ __html: `&quot;${current.options[0]}&quot;` }}
-                />
+              <div className="space-y-6">
+                {/* True/False Question Layout */}
+                <div className="space-y-4">
+                  {/* Card 1: The question prompt (what user is matching FROM) */}
+                  <div className="p-4 rounded-lg bg-[var(--color-primary-muted)]/30 border border-[var(--color-border)]">
+                    <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
+                      {current.answerWith === 'definition' ? 'Term' : 'Definition'}
+                    </p>
+                    <div 
+                      className="text-lg font-medium text-[var(--color-text)] study-content"
+                      dangerouslySetInnerHTML={{ 
+                        __html: current.answerWith === 'definition' 
+                          ? current.card.term 
+                          : current.card.definition 
+                      }} 
+                    />
+                  </div>
+                  
+                  {/* Card 2: The proposed match (what user is evaluating) */}
+                  <div className="p-4 rounded-lg bg-[var(--color-background)] border-2 border-dashed border-[var(--color-border)]">
+                    <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
+                      Proposed {current.answerWith === 'definition' ? 'Definition' : 'Term'}
+                    </p>
+                    <div 
+                      className="text-base text-[var(--color-text)] study-content"
+                      dangerouslySetInnerHTML={{ 
+                        __html: current.options[0] 
+                      }} 
+                    />
+                  </div>
+                </div>
+
+                {/* Question */}
+                <div className="text-center">
+                  <p className="text-base font-medium text-[var(--color-text)]">
+                    Is this the correct {current.answerWith === 'definition' ? 'definition' : 'term'} for the {current.answerWith === 'definition' ? 'term' : 'definition'} above?
+                  </p>
+                </div>
+
+                {/* True/False Buttons */}
+                <div className="flex gap-3 justify-center">
+                  <Button 
+                    onClick={() => submitTrueFalse(true)}
+                    variant="secondary"
+                    className="min-w-[100px] bg-green-500/10 hover:bg-green-500/20 text-green-600 border-green-500/30"
+                  >
+                    {t('true')}
+                  </Button>
+                  <Button 
+                    onClick={() => submitTrueFalse(false)}
+                    variant="secondary"
+                    className="min-w-[100px] bg-red-500/10 hover:bg-red-500/20 text-red-600 border-red-500/30"
+                  >
+                    {t('false')}
+                  </Button>
+                </div>
               </div>
             )}
 

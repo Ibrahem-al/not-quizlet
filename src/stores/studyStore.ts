@@ -89,9 +89,28 @@ export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
   addSet: async (partial) => {
     const now = timestamp();
     const visibility = partial.visibility ?? 'private';
+    
+    // Auto-number untitled sets to avoid duplicates
+    let title = partial.title?.trim() ?? '';
+    if (!title) {
+      const existingSets = get().sets;
+      const untitledRegex = /^Untitled Set(?: (\d+))?$/;
+      let maxNum = 0;
+      
+      for (const set of existingSets) {
+        const match = set.title.match(untitledRegex);
+        if (match) {
+          const num = match[1] ? parseInt(match[1], 10) : 1;
+          maxNum = Math.max(maxNum, num);
+        }
+      }
+      
+      title = maxNum === 0 ? 'Untitled Set' : `Untitled Set ${maxNum + 1}`;
+    }
+    
     const studySet: StudySet = {
       id: uuid(),
-      title: partial.title ?? 'Untitled Set',
+      title,
       description: partial.description ?? '',
       createdAt: now,
       updatedAt: now,

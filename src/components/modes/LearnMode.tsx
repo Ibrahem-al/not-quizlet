@@ -180,7 +180,7 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
               className="space-y-6"
             >
               <div
-                className="text-lg font-medium text-[var(--color-text)]"
+                className="text-lg font-medium text-[var(--color-text)] study-content"
                 dangerouslySetInnerHTML={{ __html: current.card.term }}
               />
 
@@ -218,7 +218,7 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
 
               {current.questionType === 'truefalse' && current.options && (
                 <div className="space-y-3">
-                  <div className="text-[var(--color-text-secondary)]">
+                  <div className="text-[var(--color-text-secondary)] study-content">
                     {t('definition')}: <span dangerouslySetInnerHTML={{ __html: current.options[0] }} />
                   </div>
                   <p className="text-sm text-[var(--color-text)]">{t('isThisCorrect')}</p>
@@ -247,7 +247,7 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                   animate={{ opacity: 1 }}
                   className={`p-3 rounded-lg ${correct ? 'bg-[var(--color-success)]/20' : 'bg-[var(--color-danger)]/20'}`}
                 >
-                  <div className="text-sm text-[var(--color-text)]">
+                  <div className="text-sm text-[var(--color-text)] study-content">
                     {correct ? t('correct') : (
                       <span dangerouslySetInnerHTML={{ __html: `${t('correctAnswer', { answer: '' })} ${current.card.definition}` }} />
                     )}

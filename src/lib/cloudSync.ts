@@ -19,6 +19,10 @@ interface StudySetRow {
 }
 
 function toRow(set: StudySet, userId: string): StudySetRow {
+  // Ensure sharing mode and visibility are in sync
+  const sharingMode = set.sharingMode || 'private';
+  const visibility = sharingMode === 'public' ? 'public' : (set.visibility || 'private');
+  
   return {
     id: set.id,
     user_id: userId,
@@ -30,8 +34,8 @@ function toRow(set: StudySet, userId: string): StudySetRow {
     updated_at: set.updatedAt,
     last_studied: set.lastStudied,
     study_stats: set.studyStats,
-    visibility: set.visibility,
-    sharing_mode: set.sharingMode || 'private',
+    visibility: visibility,
+    sharing_mode: sharingMode,
     folder_id: set.folderId ?? null,
   };
 }
@@ -67,10 +71,11 @@ export async function fetchUserSets(userId: string): Promise<StudySet[]> {
 
 export async function fetchPublicSets(): Promise<StudySet[]> {
   if (!isSupabaseConfigured() || !supabase) return [];
+  // Query for both legacy 'visibility' and new 'sharing_mode' for backwards compatibility
   const { data, error } = await supabase
     .from('study_sets')
     .select('*')
-    .eq('visibility', 'public')
+    .or('visibility.eq.public,sharing_mode.eq.public')
     .order('updated_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((r) => fromRow(r as StudySetRow));

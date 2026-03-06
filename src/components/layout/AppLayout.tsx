@@ -1,8 +1,6 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Globe, Users } from 'lucide-react';
+import { Plus, Globe, Users, Library } from 'lucide-react';
 import { Button } from '../ui';
-import { ThemeToggle } from '../ui/ThemeToggle';
-import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 import { useAuthStore } from '../../stores/authStore';
 import { useTranslation } from '../../hooks/useTranslation';
 
@@ -52,6 +50,26 @@ function AuthButton() {
       <Button variant="secondary" size="sm" className="font-medium">
         {t('signIn')}
       </Button>
+    </Link>
+  );
+}
+
+function MySetsLink() {
+  const { t } = useTranslation();
+  const location = useLocation();
+  const isActive = location.pathname === '/';
+
+  return (
+    <Link
+      to="/"
+      className={`flex items-center gap-1.5 text-sm font-medium transition-colors duration-[var(--duration-fast)] px-3 py-1.5 rounded-[var(--radius-sm)]
+        ${isActive 
+          ? 'text-[var(--color-primary)] bg-[var(--color-primary-muted)]' 
+          : 'text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-surface-muted)]'
+        }`}
+    >
+      <Library className="w-4 h-4" />
+      {t('yourStudySets')}
     </Link>
   );
 }
@@ -113,6 +131,7 @@ export function AppLayout({ children, breadcrumbs, headerRight, sidebar }: AppLa
               >
                 StudyFlow
               </Link>
+              <MySetsLink />
               <ExploreLink />
               <SharedLink />
               {breadcrumbs?.map((item, i) => (
@@ -144,10 +163,8 @@ export function AppLayout({ children, breadcrumbs, headerRight, sidebar }: AppLa
               </div>
             )}
 
-            {/* Right: Settings & Auth (pushed to corner) */}
+            {/* Right: Auth only (settings moved to More menu) */}
             <div className="flex items-center gap-2 shrink-0 ml-auto">
-              <LanguageSwitcher />
-              <ThemeToggle />
               <AuthButton />
             </div>
           </div>
@@ -176,7 +193,7 @@ export function NewSetButton() {
 
   return (
     <Link to="/sets/new">
-      <Button className="gap-2 shadow-[var(--shadow-sm)]">
+      <Button className="gap-2 shadow-[var(--shadow-sm)] whitespace-nowrap">
         <Plus className="w-4 h-4 shrink-0" aria-hidden />
         {t('newSet')}
       </Button>

@@ -21,8 +21,10 @@ interface ShareDialogProps {
   itemType: ItemType;
   itemId: string;
   itemName: string;
+  sharingMode?: SharingMode;
   isOpen: boolean;
   onClose: () => void;
+  onSharingModeChange?: (mode: SharingMode) => void;
 }
 
 const SHARING_MODES: { value: SharingMode; label: 'onlyYou' | 'onlyInvited' | 'anyoneWithLink' | 'public'; icon: typeof Lock; color: string }[] = [
@@ -37,7 +39,7 @@ const PERMISSION_LEVELS: { value: PermissionLevel; label: 'viewer' | 'editor'; d
   { value: 'editor', label: 'editor', description: 'canEdit' },
 ];
 
-export function ShareDialog({ itemType, itemId, itemName, isOpen, onClose }: ShareDialogProps) {
+export function ShareDialog({ itemType, itemId, itemName, sharingMode: initialSharingMode, isOpen, onClose, onSharingModeChange }: ShareDialogProps) {
   const { t } = useTranslation();
   const {
     shareWithUser,
@@ -55,7 +57,14 @@ export function ShareDialog({ itemType, itemId, itemName, isOpen, onClose }: Sha
   } = useSharingStore();
 
   const [activeTab, setActiveTab] = useState<'general' | 'people'>('general');
-  const [sharingMode, setSharingMode] = useState<SharingMode>('private');
+  const [sharingMode, setSharingMode] = useState<SharingMode>(initialSharingMode || 'private');
+
+  // Sync sharing mode when prop changes or dialog opens
+  useEffect(() => {
+    if (isOpen && initialSharingMode) {
+      setSharingMode(initialSharingMode);
+    }
+  }, [isOpen, initialSharingMode]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePermission, setInvitePermission] = useState<PermissionLevel>('viewer');
   const [shareLink, setShareLink] = useState<string | null>(null);
@@ -86,6 +95,7 @@ export function ShareDialog({ itemType, itemId, itemName, isOpen, onClose }: Sha
     setSharingMode(mode);
     try {
       await updateSharingMode(itemType, itemId, mode);
+      onSharingModeChange?.(mode);
       if (mode === 'link' && !shareLink) {
         await handleCreateLink();
       }

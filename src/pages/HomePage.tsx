@@ -1,21 +1,79 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Fuse from 'fuse.js';
-import { Search, Download, Upload, MoreVertical, BarChart3, BookOpen, Layers } from 'lucide-react';
+import { Search, Download, Upload, MoreVertical, BarChart3, BookOpen, Layers, Trash2, X, Moon, Sun, Languages } from 'lucide-react';
 import { Card, Button } from '../components/ui';
 import { SkeletonCard } from '../components/ui/Skeleton';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { AppLayout, NewSetButton } from '../components/layout/AppLayout';
 import { FolderSidebar } from '../components/folders/FolderSidebar';
 import { useStudyStore } from '../stores/studyStore';
 import { useFolderStore } from '../stores/folderStore';
+import { useAuthStore } from '../stores/authStore';
+import { useThemeStore } from '../stores/themeStore';
+import { useLanguageStore } from '../stores/languageStore';
+import { useTranslation } from '../hooks/useTranslation';
+
+function ThemeToggleMenuItem({ onClose }: { onClose: () => void }) {
+  const { theme, toggleTheme } = useThemeStore();
+  const { t } = useTranslation();
+  
+  return (
+    <button
+      type="button"
+      className="w-full px-4 py-2.5 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
+      role="menuitem"
+      onClick={() => {
+        toggleTheme();
+        onClose();
+      }}
+      title={theme === 'dark' ? t('light') : t('dark')}
+    >
+      {theme === 'dark' ? (
+        <Sun className="w-4 h-4 shrink-0 text-amber-500" />
+      ) : (
+        <Moon className="w-4 h-4 shrink-0 text-indigo-500" />
+      )}
+      {theme === 'dark' ? t('light') : t('dark')} {t('theme').toLowerCase()}
+    </button>
+  );
+}
+
+function LanguageToggleMenuItem({ onClose }: { onClose: () => void }) {
+  const { language, setLanguage } = useLanguageStore();
+  const { t } = useTranslation();
+  
+  const toggleLanguage = () => {
+    setLanguage(language === 'en' ? 'ar' : 'en');
+  };
+  
+  return (
+    <button
+      type="button"
+      className="w-full px-4 py-2.5 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
+      role="menuitem"
+      onClick={() => {
+        toggleLanguage();
+        onClose();
+      }}
+      title={t('language')}
+    >
+      <Languages className="w-4 h-4 shrink-0 text-[var(--color-primary)]" />
+      {language === 'en' ? 'العربية' : 'English'}
+    </button>
+  );
+}
 
 export function HomePage() {
-  const { sets, loadSets, loadSettings, loaded } = useStudyStore();
+  const { sets, loadSets, loadSettings, loaded, deleteSet } = useStudyStore();
   const { currentFolderId, setCurrentFolder, loadFolders } = useFolderStore();
+  const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [importFile, setImportFile] = useState<HTMLInputElement | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+  const [setToDelete, setSetToDelete] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     loadSets();
@@ -141,13 +199,16 @@ export function HomePage() {
             </button>
             <button
               type="button"
-              className="w-full px-4 py-2.5 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 rounded-b-[var(--radius-sm)] transition-colors"
+              className="w-full px-4 py-2.5 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
               role="menuitem"
               onClick={() => importFile?.click()}
               title="Restore from JSON backup"
             >
               <Upload className="w-4 h-4 shrink-0 text-[var(--color-primary)]" /> Import backup
             </button>
+            <div className="border-t border-[var(--color-border)] my-1" />
+            <ThemeToggleMenuItem onClose={() => setMoreOpen(false)} />
+            <LanguageToggleMenuItem onClose={() => setMoreOpen(false)} />
           </div>
         )}
         <input
@@ -191,9 +252,9 @@ export function HomePage() {
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2">
           {filteredSets.map((set) => (
-            <li key={set.id}>
-              <Link to={`/sets/${set.id}`} className="block h-full">
-                <Card className="block h-full group">
+            <li key={set.id} className="group">
+              <Card className="h-full relative">
+                <Link to={`/sets/${set.id}`} className="block h-full">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <h2 className="font-semibold text-[var(--color-text)] truncate text-base group-hover:text-[var(--color-primary)] transition-colors">
@@ -230,12 +291,41 @@ export function HomePage() {
                       </div>
                     )}
                   </div>
-                </Card>
-              </Link>
+                </Link>
+                {/* Delete button - visible on hover */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSetToDelete({ id: set.id, title: set.title });
+                  }}
+                  className="absolute top-3 right-3 p-2 rounded-full bg-[var(--color-surface)] text-[var(--color-text-tertiary)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                  title="Delete set"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </Card>
             </li>
           ))}
         </ul>
       )}
+
+      <ConfirmModal
+        open={!!setToDelete}
+        title="Delete this set?"
+        body={setToDelete ? `Are you sure you want to delete "${setToDelete.title}"? This cannot be undone.` : ''}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={() => {
+          if (setToDelete) {
+            deleteSet(setToDelete.id);
+            setSetToDelete(null);
+          }
+        }}
+        onCancel={() => setSetToDelete(null)}
+      />
     </AppLayout>
   );
 }

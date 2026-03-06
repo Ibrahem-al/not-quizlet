@@ -258,9 +258,13 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
     try {
       if (!supabase) throw new Error('Not authenticated');
       const table = itemType === 'set' ? 'study_sets' : 'folders';
+      // Update both sharing_mode (new) and visibility (legacy) for backwards compatibility
       const { error } = await supabase
         .from(table)
-        .update({ sharing_mode: mode })
+        .update({ 
+          sharing_mode: mode,
+          visibility: mode === 'public' ? 'public' : 'private'
+        })
         .eq('id', itemId);
 
       if (error) throw error;
