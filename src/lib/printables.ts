@@ -17,10 +17,49 @@ function stripHtml(html: string): string {
   return (el.textContent || el.innerText || '').trim();
 }
 
-function extractBase64Images(html: string): string[] {
+/** Extract ALL image src attributes from HTML (both data: URLs and http URLs) */
+function extractAllImageSrcs(html: string): string[] {
   if (!html) return [];
-  const matches = [...html.matchAll(/<img[^>]+src=["'](data:image\/[^"']+)["'][^>]*>/gi)];
+  const matches = [...html.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi)];
   return matches.map(m => m[1]);
+}
+
+/** Convert a URL image to base64 via canvas (for jsPDF compatibility) */
+function convertUrlToBase64(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      try {
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        reject(new Error('Canvas tainted'));
+      }
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = url;
+  });
+}
+
+/** Resolve image sources to base64 data URLs (converts http URLs via canvas) */
+async function resolveImages(srcs: string[]): Promise<string[]> {
+  const results: string[] = [];
+  for (const src of srcs) {
+    if (src.startsWith('data:')) {
+      results.push(src);
+    } else if (src.startsWith('http://') || src.startsWith('https://')) {
+      try {
+        const base64 = await convertUrlToBase64(src);
+        results.push(base64);
+      } catch { /* skip unloadable URLs */ }
+    }
+  }
+  return results;
 }
 
 function getImageFormat(dataUrl: string): string {
@@ -97,11 +136,143 @@ interface CardContent {
   images: string[];
 }
 
-function parseCardSide(html: string): CardContent {
+/** Parse card HTML, resolve URL images to base64, and optionally include card.imageData */
+async function parseCardSideAsync(html: string, imageData?: string): Promise<CardContent> {
+  const text = stripHtml(html);
+  const srcs = extractAllImageSrcs(html);
+  const images = await resolveImages(srcs);
+  if (imageData) images.push(imageData);
+  return { text, images };
+}
+
+// --- Unicode / non-Latin text helpers ---
+
+/** Detect text that requires canvas-based rendering (Arabic, Hebrew, CJK, Thai, Devanagari, etc.) */
+function needsCanvasRendering(text: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return /[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u2100-\u214F\u0300-\u036F]/.test(text);
+}
+
+const MM_TO_PX = 96 / 25.4; // ~3.78 px per mm at 96 DPI
+const CANVAS_SCALE = 4; // 4x for crisp text in PDF
+
+/** Word-wrap text on a canvas context */
+function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const paragraphs = text.split('\n');
+  const allLines: string[] = [];
+  for (const para of paragraphs) {
+    const words = para.split(/\s+/).filter(w => w.length > 0);
+    if (words.length === 0) { allLines.push(''); continue; }
+    let line = '';
+    for (const word of words) {
+      const testLine = line ? `${line} ${word}` : word;
+      if (ctx.measureText(testLine).width > maxWidth && line) {
+        allLines.push(line);
+        line = word;
+      } else {
+        line = testLine;
+      }
+    }
+    if (line) allLines.push(line);
+  }
+  return allLines.length > 0 ? allLines : [''];
+}
+
+/** Render text to a high-DPI canvas image (handles Arabic shaping, RTL, CJK, etc. via browser engine) */
+function renderTextCanvas(
+  text: string,
+  maxWidthMm: number,
+  fontSizePt: number,
+  bold: boolean,
+): { dataUrl: string; widthMm: number; heightMm: number; lineCount: number } {
+  const maxWidthPx = maxWidthMm * MM_TO_PX * CANVAS_SCALE;
+  const fontSizePx = fontSizePt * (4 / 3) * CANVAS_SCALE;
+  const fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif';
+  const fontStr = `${bold ? 'bold' : 'normal'} ${fontSizePx}px ${fontFamily}`;
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+  ctx.font = fontStr;
+
+  const isRtl = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0590-\u05FF]/.test(text);
+
+  const lines = wrapCanvasText(ctx, text, maxWidthPx - 8);
+  const lineHeight = fontSizePx * 1.4;
+
+  canvas.width = Math.ceil(maxWidthPx);
+  canvas.height = Math.ceil(lines.length * lineHeight + fontSizePx * 0.5);
+
+  // Must re-set after resize
+  ctx.font = fontStr;
+  ctx.fillStyle = '#000000';
+  ctx.textBaseline = 'top';
+
+  if (isRtl) {
+    ctx.direction = 'rtl';
+    ctx.textAlign = 'right';
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const xPos = isRtl ? canvas.width - 4 : 4;
+    ctx.fillText(lines[i], xPos, i * lineHeight + fontSizePx * 0.1);
+  }
+
   return {
-    text: stripHtml(html),
-    images: extractBase64Images(html),
+    dataUrl: canvas.toDataURL('image/png'),
+    widthMm: canvas.width / (MM_TO_PX * CANVAS_SCALE),
+    heightMm: canvas.height / (MM_TO_PX * CANVAS_SCALE),
+    lineCount: lines.length,
   };
+}
+
+/**
+ * Get line count for text (works for both Latin and non-Latin).
+ * Used for layout height calculations.
+ */
+function getLineCount(doc: JsPDFType, text: string, maxW: number, fontSize: number): number {
+  if (!needsCanvasRendering(text)) {
+    doc.setFontSize(fontSize);
+    return doc.splitTextToSize(text, maxW).length;
+  }
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+  ctx.font = `${fontSize * (4 / 3)}px system-ui, sans-serif`;
+  return wrapCanvasText(ctx, text, maxW * MM_TO_PX).length;
+}
+
+/**
+ * Render text in PDF. Uses jsPDF for Latin text, canvas for non-Latin scripts.
+ * Returns height used in mm.
+ */
+async function pdfText(
+  doc: JsPDFType,
+  text: string,
+  x: number,
+  y: number,
+  maxW: number,
+  fontSize: number,
+  bold = false,
+  align?: 'left' | 'center' | 'right',
+): Promise<number> {
+  if (!text) return 0;
+
+  if (!needsCanvasRendering(text)) {
+    doc.setFontSize(fontSize);
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    const lines = doc.splitTextToSize(text, maxW);
+    const opts: Record<string, string> = {};
+    if (align) opts.align = align;
+    doc.text(lines, x, y, opts);
+    return lines.length * (fontSize * 0.42 + 0.5);
+  }
+
+  const result = renderTextCanvas(text, maxW, fontSize, bold);
+  const imgY = y - fontSize * 0.3;
+  let imgX = x;
+  if (align === 'center') imgX = x - result.widthMm / 2;
+  else if (align === 'right') imgX = x - result.widthMm;
+  doc.addImage(result.dataUrl, 'PNG', imgX, imgY, result.widthMm, result.heightMm);
+  return result.heightMm;
 }
 
 function slugify(title: string): string {
@@ -165,16 +336,16 @@ export async function generateLineMatchingPDF(cards: Card[], title: string, conf
   const selectedCards = cards.slice(0, Math.min(config.count, cards.length));
 
   // Resolve direction per-item: "left" is the prompt, "right" is the answer
-  const items = selectedCards.map((c) => {
+  const items = await Promise.all(selectedCards.map(async (c) => {
     const dir = config.direction === 'both'
       ? (Math.random() > 0.5 ? 'term-to-definition' : 'definition-to-term')
       : config.direction;
     const swapped = dir === 'definition-to-term';
     return {
-      term: parseCardSide(swapped ? c.definition : c.term),
-      definition: parseCardSide(swapped ? c.term : c.definition),
+      term: await parseCardSideAsync(swapped ? c.definition : c.term, swapped ? undefined : c.imageData),
+      definition: await parseCardSideAsync(swapped ? c.term : c.definition, swapped ? c.imageData : undefined),
     };
-  });
+  }));
 
   const shuffledDefs = shuffle(items.map((item, i) => ({ def: item.definition, origIndex: i })));
   const answerKey: string[] = [];
@@ -221,11 +392,11 @@ export async function generateLineMatchingPDF(cards: Card[], title: string, conf
       const def = shuffledEntry ? shuffledEntry.def : { text: '', images: [] };
 
       doc.setFontSize(10);
-      const termLabel = term.text || '(image)';
-      const defLabel = def.text || '(image)';
-      const termLines = doc.splitTextToSize(`${i + 1}. ${termLabel}`, COL_LEFT_W);
-      const defLines = doc.splitTextToSize(`${toLetter(i)}. ${defLabel}`, COL_RIGHT_W);
-      const textRowH = Math.max(termLines.length, defLines.length) * 5;
+      const termText = `${i + 1}. ${term.text || (term.images.length > 0 ? '(see image)' : '—')}`;
+      const defText = `${toLetter(i)}. ${def.text || (def.images.length > 0 ? '(see image)' : '—')}`;
+      const termLineCount = getLineCount(doc, termText, COL_LEFT_W, 10);
+      const defLineCount = getLineCount(doc, defText, COL_RIGHT_W, 10);
+      const textRowH = Math.max(termLineCount, defLineCount) * 5;
       const termImgCount = term.images.length;
       const defImgCount = def.images.length;
       const hasImages = termImgCount > 0 || defImgCount > 0;
@@ -234,8 +405,8 @@ export async function generateLineMatchingPDF(cards: Card[], title: string, conf
 
       y = checkPageBreak(doc, y, rowHeight);
 
-      doc.text(termLines, COL_LEFT_X, y);
-      doc.text(defLines, COL_RIGHT_X, y);
+      await pdfText(doc, termText, COL_LEFT_X, y, COL_LEFT_W, 10);
+      await pdfText(doc, defText, COL_RIGHT_X, y, COL_RIGHT_W, 10);
 
       const textBottom = y + textRowH - 2;
 
@@ -300,23 +471,23 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
   else if (selectedCards.length >= 2) types.push('written', 'tf');
   else types.push('written');
 
-  const questions: TestQuestion[] = selectedCards.map((card, i) => {
+  const questions: TestQuestion[] = await Promise.all(selectedCards.map(async (card, i) => {
     const type = types[i % types.length];
     const dir = config.direction === 'both'
       ? (Math.random() > 0.5 ? 'term-to-definition' : 'definition-to-term')
       : config.direction;
     const swapped = dir === 'definition-to-term';
 
-    const promptContent = parseCardSide(swapped ? card.definition : card.term);
-    const answerContent = parseCardSide(swapped ? card.term : card.definition);
+    const promptContent = await parseCardSideAsync(swapped ? card.definition : card.term, swapped ? card.imageData : undefined);
+    const answerContent = await parseCardSideAsync(swapped ? card.term : card.definition, swapped ? undefined : card.imageData);
     const q: TestQuestion = { type, card, promptContent, answerContent, swapped };
 
     if (type === 'mc') {
       const others = shuffle(selectedCards.filter((c) => c.id !== card.id)).slice(0, 3);
-      const wrongAnswers = others.map((c) => parseCardSide(swapped ? c.term : c.definition));
+      const wrongAnswers = await Promise.all(others.map((c) => parseCardSideAsync(swapped ? c.term : c.definition, swapped ? undefined : c.imageData)));
       const allEntries = shuffle([
-        { text: answerContent.text || '(image)', imgs: answerContent.images, isCorrect: true },
-        ...wrongAnswers.map((d) => ({ text: d.text || '(image)', imgs: d.images, isCorrect: false })),
+        { text: answerContent.text || (answerContent.images.length > 0 ? '(see image)' : '—'), imgs: answerContent.images, isCorrect: true },
+        ...wrongAnswers.map((d) => ({ text: d.text || (d.images.length > 0 ? '(see image)' : '—'), imgs: d.images, isCorrect: false })),
       ]);
       q.options = allEntries.map((e) => e.text);
       q.optionImages = allEntries.map((e) => e.imgs);
@@ -324,19 +495,19 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
     } else if (type === 'tf') {
       const isTrue = Math.random() > 0.5;
       if (isTrue) {
-        q.shownAnswer = answerContent.text || '(image)';
+        q.shownAnswer = answerContent.text || (answerContent.images.length > 0 ? '(see image)' : '—');
         q.shownAnswerImages = answerContent.images;
         q.isTrue = true;
       } else {
         const wrongCard = shuffle(selectedCards.filter((c) => c.id !== card.id))[0];
-        const wrongAnswer = parseCardSide(swapped ? wrongCard.term : wrongCard.definition);
-        q.shownAnswer = wrongAnswer.text || '(image)';
+        const wrongAnswer = await parseCardSideAsync(swapped ? wrongCard.term : wrongCard.definition, swapped ? undefined : wrongCard.imageData);
+        q.shownAnswer = wrongAnswer.text || (wrongAnswer.images.length > 0 ? '(see image)' : '—');
         q.shownAnswerImages = wrongAnswer.images;
         q.isTrue = false;
       }
     }
     return q;
-  });
+  }));
 
   // Header
   let y = addHeader(doc, 'Test', title);
@@ -359,15 +530,13 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
     if (q.type === 'written') {
       const verb = q.swapped ? 'What term means' : 'Define';
       const prompt = `${i + 1}. ${verb}: "${promptLabel}"`;
-      const promptLines = doc.splitTextToSize(prompt, CONTENT_W);
+      const promptLineCount = getLineCount(doc, prompt, CONTENT_W, 10);
       const imgSpace = promptImgs.length > 0 ? (IMG_H_INLINE + 2) * promptImgs.length + 1 : 0;
-      const needed = promptLines.length * 5 + imgSpace + 24;
+      const needed = promptLineCount * 5 + imgSpace + 24;
       y = checkPageBreak(doc, y, needed);
 
-      doc.setFont('helvetica', 'bold');
-      doc.text(promptLines, MARGIN, y);
-      doc.setFont('helvetica', 'normal');
-      y += promptLines.length * 5 + 2;
+      const h = await pdfText(doc, prompt, MARGIN, y, CONTENT_W, 10, true);
+      y += h + 2;
 
       if (promptImgs.length > 0) {
         const h = await addScaledImages(doc, promptImgs, MARGIN + 5, y, 40, (IMG_H_INLINE + 2) * promptImgs.length);
@@ -385,17 +554,15 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
     } else if (q.type === 'mc') {
       const verb = q.swapped ? 'Which term matches' : 'What is the definition of';
       const prompt = `${i + 1}. ${verb} "${promptLabel}"?`;
-      const promptLines = doc.splitTextToSize(prompt, CONTENT_W);
+      const promptLineCount = getLineCount(doc, prompt, CONTENT_W, 10);
       const imgSpace = promptImgs.length > 0 ? (IMG_H_INLINE + 2) * promptImgs.length + 1 : 0;
       const optImgCount = q.optionImages?.reduce((s, imgs) => s + imgs.length, 0) ?? 0;
-      const optionLines = q.options!.map((opt) => doc.splitTextToSize(opt, CONTENT_W - 15));
-      const needed = promptLines.length * 5 + imgSpace + optionLines.reduce((s, l) => s + l.length * 5 + 2, 0) + optImgCount * (IMG_H_INLINE + 2) + 8;
+      const optionLineCounts = q.options!.map((opt) => getLineCount(doc, opt, CONTENT_W - 15, 10));
+      const needed = promptLineCount * 5 + imgSpace + optionLineCounts.reduce((s, lc) => s + lc * 5 + 2, 0) + optImgCount * (IMG_H_INLINE + 2) + 8;
       y = checkPageBreak(doc, y, needed);
 
-      doc.setFont('helvetica', 'bold');
-      doc.text(promptLines, MARGIN, y);
-      doc.setFont('helvetica', 'normal');
-      y += promptLines.length * 5 + 2;
+      const h = await pdfText(doc, prompt, MARGIN, y, CONTENT_W, 10, true);
+      y += h + 2;
 
       if (promptImgs.length > 0) {
         const h = await addScaledImages(doc, promptImgs, MARGIN + 5, y, 40, (IMG_H_INLINE + 2) * promptImgs.length);
@@ -406,9 +573,9 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
       const optionLetters = ['a', 'b', 'c', 'd'];
       for (let j = 0; j < q.options!.length; j++) {
         doc.circle(MARGIN + 5, y - 1.2, 2);
-        const optText = doc.splitTextToSize(`${optionLetters[j]})  ${q.options![j]}`, CONTENT_W - 15);
-        doc.text(optText, MARGIN + 10, y);
-        y += optText.length * 5 + 1;
+        const optFullText = `${optionLetters[j]})  ${q.options![j]}`;
+        const optH = await pdfText(doc, optFullText, MARGIN + 10, y, CONTENT_W - 15, 10);
+        y += optH + 1;
 
         const optImgs = q.optionImages?.[j];
         if (optImgs && optImgs.length > 0) {
@@ -423,19 +590,17 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
       const prompt = q.swapped
         ? `${i + 1}. True or False: "${q.shownAnswer}" is the term for "${promptLabel}"`
         : `${i + 1}. True or False: "${promptLabel}" means "${q.shownAnswer}"`;
-      const promptLines = doc.splitTextToSize(prompt, CONTENT_W);
+      const promptLineCount = getLineCount(doc, prompt, CONTENT_W, 10);
       const shownAnswerImgs = q.shownAnswerImages ?? [];
       const totalImgCount = promptImgs.length + shownAnswerImgs.length;
       const hasAnyImg = totalImgCount > 0;
       const maxImgSide = Math.max(promptImgs.length, shownAnswerImgs.length);
       const imgSpace = hasAnyImg ? (IMG_H_INLINE + 2) * maxImgSide + 1 : 0;
-      const needed = promptLines.length * 5 + imgSpace + 12;
+      const needed = promptLineCount * 5 + imgSpace + 12;
       y = checkPageBreak(doc, y, needed);
 
-      doc.setFont('helvetica', 'bold');
-      doc.text(promptLines, MARGIN, y);
-      doc.setFont('helvetica', 'normal');
-      y += promptLines.length * 5 + 2;
+      const tfH = await pdfText(doc, prompt, MARGIN, y, CONTENT_W, 10, true);
+      y += tfH + 2;
 
       if (hasAnyImg) {
         const imgY = y;
@@ -463,7 +628,7 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
   doc.setFontSize(10);
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
-    const ansLabel = q.answerContent.text || '(image)';
+    const ansLabel = q.answerContent.text || (q.answerContent.images.length > 0 ? '(see image)' : '—');
     const ansImgs = q.answerContent.images;
     let answer = '';
     if (q.type === 'written') {
@@ -476,9 +641,9 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
     const showAnsImgs = ansImgs.length > 0 && (q.type === 'written' || q.type === 'mc');
     const imgSpace = showAnsImgs ? (IMG_H_INLINE + 2) * ansImgs.length : 0;
     y = checkPageBreak(doc, y, 12 + imgSpace);
-    const answerLines = doc.splitTextToSize(`${i + 1}. ${answer}`, CONTENT_W);
-    doc.text(answerLines, MARGIN, y);
-    y += answerLines.length * 5 + 1;
+    const ansText = `${i + 1}. ${answer}`;
+    const ansH = await pdfText(doc, ansText, MARGIN, y, CONTENT_W, 10);
+    y += ansH + 1;
 
     if (showAnsImgs) {
       const h = await addScaledImages(doc, ansImgs, MARGIN + 10, y, 30, (IMG_H_INLINE - 4 + 2) * ansImgs.length);
@@ -551,8 +716,8 @@ export async function generateFlashcardsPDF(cards: Card[], title: string, config
         ? (Math.random() > 0.5 ? 'term-to-definition' : 'definition-to-term')
         : config.direction;
       const swapped = dir === 'definition-to-term';
-      const topContent = parseCardSide(swapped ? card.definition : card.term);
-      const bottomContent = parseCardSide(swapped ? card.term : card.definition);
+      const topContent = await parseCardSideAsync(swapped ? card.definition : card.term, swapped ? undefined : card.imageData);
+      const bottomContent = await parseCardSideAsync(swapped ? card.term : card.definition, swapped ? card.imageData : undefined);
 
       // --- Top half ---
       await renderCellContent(doc, topContent, x + 4, y + 5, innerW, halfH - 3, true);
@@ -598,16 +763,13 @@ async function renderCellContent(
     const imgH = maxH * 0.6;
 
     let fontSize = bold ? 10 : 9;
-    doc.setFontSize(fontSize);
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
-    let lines = doc.splitTextToSize(content.text, maxW);
-    while (lines.length * 4 > textH && fontSize > 7) {
+    let lineCount = getLineCount(doc, content.text, maxW, fontSize);
+    while (lineCount * 4 > textH && fontSize > 7) {
       fontSize--;
-      doc.setFontSize(fontSize);
-      lines = doc.splitTextToSize(content.text, maxW);
+      lineCount = getLineCount(doc, content.text, maxW, fontSize);
     }
-    doc.text(lines, x, y + 2);
-    const textBottom = y + Math.min(lines.length * (fontSize * 0.42) + 2, textH);
+    const renderedH = await pdfText(doc, content.text, x, y + 2, maxW, fontSize, bold);
+    const textBottom = y + Math.min(renderedH + 2, textH);
 
     await addScaledImages(doc, content.images, x, textBottom + 1, maxW - 2, imgH);
 
@@ -617,18 +779,16 @@ async function renderCellContent(
 
   } else {
     // Text only — vertically center
+    const displayText = content.text || '(empty)';
     let fontSize = bold ? 10 : 9;
-    doc.setFontSize(fontSize);
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
-    let lines = doc.splitTextToSize(content.text || '(empty)', maxW);
-    while (lines.length * 4.5 > maxH - 2 && fontSize > 7) {
+    let lineCount = getLineCount(doc, displayText, maxW, fontSize);
+    while (lineCount * 4.5 > maxH - 2 && fontSize > 7) {
       fontSize--;
-      doc.setFontSize(fontSize);
-      lines = doc.splitTextToSize(content.text || '(empty)', maxW);
+      lineCount = getLineCount(doc, displayText, maxW, fontSize);
     }
-    const blockH = lines.length * (fontSize * 0.42);
+    const blockH = lineCount * (fontSize * 0.42);
     const startY = y + Math.max(0, (maxH - blockH) / 2);
-    doc.text(lines, x, startY);
+    await pdfText(doc, displayText, x, startY, maxW, fontSize, bold);
   }
   doc.setFont('helvetica', 'normal');
 }
@@ -649,12 +809,13 @@ export async function generateMatchingGamePDF(cards: Card[], title: string, conf
   }
 
   const tiles: GameTile[] = [];
-  selectedCards.forEach((card, i) => {
-    const term = parseCardSide(card.term);
-    const def = parseCardSide(card.definition);
+  for (let i = 0; i < selectedCards.length; i++) {
+    const card = selectedCards[i];
+    const term = await parseCardSideAsync(card.term, card.imageData);
+    const def = await parseCardSideAsync(card.definition);
     tiles.push({ text: term.text, type: 'T', matchNum: i + 1, images: term.images });
     tiles.push({ text: def.text, type: 'D', matchNum: i + 1, images: def.images });
-  });
+  }
 
   const shuffledTiles = shuffle(tiles);
 
@@ -733,16 +894,14 @@ export async function generateMatchingGamePDF(cards: Card[], title: string, conf
         const textH = contentH * 0.35;
         const imgH = contentH * 0.6;
         let fontSize = 8;
-        doc.setFontSize(fontSize);
-        doc.setFont('helvetica', tile.type === 'T' ? 'bold' : 'normal');
-        let textLines = doc.splitTextToSize(tile.text, innerW);
-        while (textLines.length * 3.5 > textH && fontSize > 6) {
+        const isBold = tile.type === 'T';
+        let lc = getLineCount(doc, tile.text, innerW, fontSize);
+        while (lc * 3.5 > textH && fontSize > 6) {
           fontSize--;
-          doc.setFontSize(fontSize);
-          textLines = doc.splitTextToSize(tile.text, innerW);
+          lc = getLineCount(doc, tile.text, innerW, fontSize);
         }
-        doc.text(textLines, x + TILE_W / 2, contentY, { align: 'center' });
-        const textBottom = contentY + textLines.length * (fontSize * 0.42) + 1;
+        const renderedH = await pdfText(doc, tile.text, x + TILE_W / 2, contentY, innerW, fontSize, isBold, 'center');
+        const textBottom = contentY + renderedH + 1;
 
         // Render all images stacked, centered horizontally
         const gap = 1.5;
@@ -778,23 +937,17 @@ export async function generateMatchingGamePDF(cards: Card[], title: string, conf
 
       } else {
         // Text only
+        const displayText = tile.text || '(empty)';
+        const isBold = tile.type === 'T';
         let fontSize = 9;
-        doc.setFontSize(fontSize);
-        let textLines = doc.splitTextToSize(tile.text || '(empty)', innerW);
-        while (textLines.length * 4 > contentH && fontSize > 6) {
+        let lc = getLineCount(doc, displayText, innerW, fontSize);
+        while (lc * 4 > contentH && fontSize > 6) {
           fontSize--;
-          doc.setFontSize(fontSize);
-          textLines = doc.splitTextToSize(tile.text || '(empty)', innerW);
+          lc = getLineCount(doc, displayText, innerW, fontSize);
         }
-        if (textLines.length * 4 > contentH) {
-          const maxLines = Math.floor(contentH / 4);
-          textLines = textLines.slice(0, maxLines);
-          textLines[maxLines - 1] = textLines[maxLines - 1].substring(0, textLines[maxLines - 1].length - 3) + '...';
-        }
-        const blockH = textLines.length * (fontSize * 0.42);
+        const blockH = lc * (fontSize * 0.42);
         const textY = contentY + Math.max(0, (contentH - blockH) / 2);
-        doc.setFont('helvetica', tile.type === 'T' ? 'bold' : 'normal');
-        doc.text(textLines, x + TILE_W / 2, textY, { align: 'center' });
+        await pdfText(doc, displayText, x + TILE_W / 2, textY, innerW, fontSize, isBold, 'center');
         doc.setFont('helvetica', 'normal');
       }
     }
