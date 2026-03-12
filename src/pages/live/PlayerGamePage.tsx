@@ -41,18 +41,6 @@ export function PlayerGamePage() {
 
   const nonHostPlayers = players.filter((p) => p.nickname !== 'Host');
 
-  // Compute reveal info
-  const myResult = myAnswer && correctOptionIndex !== null
-    ? {
-        isCorrect: myAnswer.chosenOption === correctOptionIndex,
-        pointsEarned: (() => {
-          const me = players.find((p) => p.playerToken === playerToken);
-          // Approximate — host authoritative value shown after leaderboard
-          return me ? 0 : 0;
-        })(),
-      }
-    : null;
-
   return (
     <AnimatePresence mode="wait">
       {status === 'lobby' && (

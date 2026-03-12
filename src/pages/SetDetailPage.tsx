@@ -201,6 +201,8 @@ export function SetDetailPage() {
   }, [importPreview, localSet, debouncedSave]);
 
   const { pattern, canSuggest } = useSetPattern(localSet?.cards ?? []);
+  const createSession = useLiveGameStore((s) => s.createSession);
+  const [startingLive, setStartingLive] = useState(false);
 
   if (!set) {
     return (
@@ -228,9 +230,6 @@ export function SetDetailPage() {
 
   // Check if current user owns this set
   const isOwner = !displaySet.userId || displaySet.userId === user?.id;
-
-  const createSession = useLiveGameStore((s) => s.createSession);
-  const [startingLive, setStartingLive] = useState(false);
 
   const handleStartLiveGame = async () => {
     setStartingLive(true);

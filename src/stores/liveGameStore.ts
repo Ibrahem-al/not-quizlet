@@ -36,7 +36,7 @@ interface LiveGameState {
   error: string | null;
   isLoading: boolean;
   // Internal - not exposed
-  _channel: ReturnType<typeof supabase.channel> | null;
+  _channel: ReturnType<NonNullable<typeof supabase>['channel']> | null;
   _timerInterval: ReturnType<typeof setInterval> | null;
   _timerSyncInterval: ReturnType<typeof setInterval> | null;
 }
@@ -53,6 +53,11 @@ interface LiveGameActions {
   submitAnswer: (chosenOption: number) => Promise<void>;
   leaveSession: () => void;
   reset: () => void;
+  _onPlayerAnswer: (payload: PlayerAnswerPayload) => void;
+  _onQuestionShow: (payload: QuestionShowPayload) => void;
+  _onAnswerReveal: (payload: AnswerRevealPayload) => void;
+  _onLeaderboard: (payload: LeaderboardPayload) => void;
+  _onGameFinished: (payload: FinishedPayload) => void;
 }
 
 const initialState: LiveGameState = {
@@ -187,7 +192,7 @@ export const useLiveGameStore = create<LiveGameState & LiveGameActions>((set, ge
   },
 
   showQuestion: (questionIndex: number) => {
-    const { questions, _channel, players } = get();
+    const { questions, _channel } = get();
     const question = questions[questionIndex];
     if (!question || !_channel) return;
 

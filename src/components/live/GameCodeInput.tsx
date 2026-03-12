@@ -1,4 +1,4 @@
-import { useRef, KeyboardEvent, ClipboardEvent, ChangeEvent } from 'react';
+import { useRef, type KeyboardEvent, type ClipboardEvent, type ChangeEvent } from 'react';
 
 interface GameCodeInputProps {
   value: string;

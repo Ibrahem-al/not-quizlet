@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Trophy, RotateCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import { getAvatarColor } from '../../lib/liveGameUtils';
 import type { PlayerEntry } from '../../types/liveGame';
 
