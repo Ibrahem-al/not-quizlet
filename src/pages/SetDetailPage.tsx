@@ -15,6 +15,7 @@ import {
   Folder,
   Printer,
   Zap,
+  Gamepad2,
 } from 'lucide-react';
 import { useDebouncedCallback } from 'use-debounce';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -38,6 +39,7 @@ import { parseImportText } from '../lib/importText';
 import { uuid, timestamp } from '../lib/utils';
 import { PhotoImportModal } from '../components/import/PhotoImportModal';
 import { PrintDialog } from '../components/print/PrintDialog';
+import { GamesBrowserModal } from '../components/games/GamesBrowserModal';
 import type { Card as CardType, StudySet } from '../types';
 
 const modes = [
@@ -85,6 +87,7 @@ export function SetDetailPage() {
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [showMoveDialog, setShowMoveDialog] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const [showGamesBrowser, setShowGamesBrowser] = useState(false);
   const [cardErrors, setCardErrors] = useState<Record<string, ValidationError[]>>({});
   const moreRef = useRef<HTMLDivElement>(null);
 
@@ -280,6 +283,12 @@ export function SetDetailPage() {
         cards={cards}
         setTitle={displaySet.title}
       />
+      <GamesBrowserModal
+        isOpen={showGamesBrowser}
+        onClose={() => setShowGamesBrowser(false)}
+        setId={displaySet.id}
+        cardCount={cards.length}
+      />
       <MoveToFolderDialog
         setId={displaySet.id}
         setName={displaySet.title}
@@ -466,6 +475,33 @@ export function SetDetailPage() {
                     <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">{description}</span>
                   </div>
                 )
+              )}
+
+              {/* Games — opens browser modal */}
+              {canStartStudying ? (
+                <button onClick={() => setShowGamesBrowser(true)} className="text-left">
+                  <Card variant="elevated" className="flex flex-col items-center gap-2 py-5 min-h-[120px] justify-center text-center group cursor-pointer relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-rose-500 to-pink-500 opacity-0 group-hover:opacity-5 transition-opacity duration-300" />
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center shadow-lg mb-1">
+                      <Gamepad2 className="w-6 h-6 text-white shrink-0" />
+                    </div>
+                    <span className="text-sm font-semibold text-[var(--color-text)]">Games</span>
+                    <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">
+                      Browse fun games to study your cards.
+                    </span>
+                  </Card>
+                </button>
+              ) : (
+                <div
+                  className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] opacity-50 cursor-not-allowed text-center min-h-[120px] justify-center"
+                  aria-disabled="true"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-[var(--color-text-muted)]/30 flex items-center justify-center mb-1">
+                    <Gamepad2 className="w-6 h-6 text-[var(--color-text-tertiary)] shrink-0" />
+                  </div>
+                  <span className="text-sm font-semibold text-[var(--color-text-secondary)]">Games</span>
+                  <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">Browse fun games to study your cards.</span>
+                </div>
               )}
             </div>
 

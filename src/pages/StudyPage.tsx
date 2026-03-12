@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FlashcardMode } from '../components/modes/FlashcardMode';
 import { LearnMode } from '../components/modes/LearnMode';
@@ -6,6 +7,7 @@ import { TestMode } from '../components/modes/TestMode';
 import { AppLayout } from '../components/layout/AppLayout';
 import { Button } from '../components/ui';
 import { useStudySet } from '../hooks/useStudySet';
+import { gameRegistry } from '../config/gameRegistry';
 
 type Mode = 'flashcards' | 'learn' | 'match' | 'test';
 
@@ -44,7 +46,23 @@ export function StudyPage() {
       return <MatchMode cards={cards} onExit={exit} />;
     case 'test':
       return <TestMode cards={cards} setTitle={set.title} onExit={exit} />;
-    default:
+    default: {
+      const game = gameRegistry.find(g => g.id === mode);
+      if (game) {
+        const GameComponent = game.component;
+        return (
+          <Suspense fallback={
+            <AppLayout>
+              <div className="flex items-center justify-center py-16">
+                <div className="animate-spin w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full" />
+              </div>
+            </AppLayout>
+          }>
+            <GameComponent cards={cards} setId={set.id} onExit={exit} />
+          </Suspense>
+        );
+      }
       return <StudyError message="Unknown study mode." onBack={exit} />;
+    }
   }
 }

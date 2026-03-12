@@ -268,3 +268,54 @@ Added a "Print Activities" feature accessible from the SetDetailPage's Actions m
 | `src/components/print/PrintDialog.tsx` | **NEW** — Print activities modal dialog |
 | `src/pages/SetDetailPage.tsx` | Added "Print activities" to Actions menu, renders PrintDialog |
 | `steps_taken.md` | **NEW** — This documentation file |
+
+---
+
+## Games Section Framework
+
+### Overview
+Added a "Games" entry to the study modes grid on SetDetailPage. Unlike other modes that navigate directly to a study route, clicking Games opens a modal browser designed to house hundreds of games over time. No actual games are implemented yet — just the expandable framework.
+
+### New Files
+- **`src/config/gameRegistry.ts`** — Central game registry. Exports:
+  - `GameDefinition` interface: `{ id, name, description, icon, color, category, tags, minCards, component }` where `component` is a `React.lazy` loaded component
+  - `GameModeProps` interface: `{ cards, setId, onExit }` — standard props for all game components
+  - `GameCategory` type: `'word' | 'memory' | 'speed' | 'puzzle' | 'quiz'`
+  - `gameCategories` map with labels and colors for each category
+  - `gameRegistry: GameDefinition[]` — empty array; adding a game = adding one object here
+- **`src/components/games/GamesBrowserModal.tsx`** — Games browser popup modal:
+  - Follows existing modal pattern (AnimatePresence, motion.div backdrop, escape key, ARIA attributes, focus restore)
+  - Header with title, game count, and close button
+  - Search bar (Input with Search icon) filtering by name, description, and tags
+  - Category pill filter buttons (only shown when categories have games)
+  - 2-column game card grid matching SetDetailPage mode card style (gradient icon, name, description, category badge)
+  - Games disabled when `cardCount < game.minCards` with "Needs X+ cards" message
+  - Clicking a game navigates to `/sets/{setId}/study/{game.id}` and closes modal
+  - Empty state: "Games coming soon!" with Gamepad2 icon when registry is empty
+  - No-results state for search with no matches
+- **`src/components/modes/games/`** — Empty directory for future game mode components
+
+### Modified Files
+- **`src/pages/SetDetailPage.tsx`**:
+  - Added `Gamepad2` icon import and `GamesBrowserModal` import
+  - Added `showGamesBrowser` state
+  - Added Games card as 5th item in study modes grid (rose-to-pink gradient, Gamepad2 icon, "Browse fun games to study your cards." description)
+  - Games card is a `<button>` (not Link) that opens the modal; disabled when `!canStartStudying` with same styling as other disabled modes
+  - Renders `<GamesBrowserModal>` alongside other modals
+- **`src/pages/StudyPage.tsx`**:
+  - Added `Suspense` import and `gameRegistry` import
+  - Extended `default` switch case to look up `mode` in `gameRegistry`
+  - If a matching game is found, renders its lazy-loaded component wrapped in `<Suspense>` with a spinner fallback
+  - Falls back to "Unknown study mode" error if no match
+
+### How to Add a Future Game
+1. Create `src/components/modes/games/MyGame.tsx` implementing `GameModeProps` (`{ cards, setId, onExit }`)
+2. Add one entry to the `gameRegistry` array in `src/config/gameRegistry.ts` with `component: lazy(() => import(...))`
+3. Done — the game automatically appears in the browser modal and routes via `/sets/{id}/study/{gameId}`
+
+### Architecture Decisions
+- Games reuse the existing `/sets/{id}/study/{mode}` routing pattern — no new routes needed
+- Game components are code-split via `React.lazy` so they load on demand
+- The registry pattern means no switch/case updates needed — just one array entry per game
+- Categories and tags support future filtering when the game count grows to hundreds
+- The modal design (vs. a separate page) keeps the user close to their set while browsing games
