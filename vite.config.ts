@@ -78,7 +78,10 @@ window.__SUPABASE_ANON_KEY__=${JSON.stringify(env.supabaseAnonKey)};
 window.__VITE_OLLAMA_ENABLED__=${JSON.stringify(env.ollamaEnabled)};
 window.__VITE_OLLAMA_MODEL__=${JSON.stringify(env.ollamaModel)};
 </script>`
-      return html.replace('</head>', `${script}\n  </head>`)
+      const preconnect = env.supabaseUrl
+        ? `<link rel="preconnect" href="${new URL(env.supabaseUrl).origin}" />`
+        : ''
+      return html.replace('</head>', `${preconnect}\n${script}\n  </head>`)
     },
   }
 
@@ -88,6 +91,19 @@ window.__VITE_OLLAMA_MODEL__=${JSON.stringify(env.ollamaModel)};
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.supabaseAnonKey),
       'import.meta.env.VITE_OLLAMA_ENABLED': JSON.stringify(env.ollamaEnabled),
       'import.meta.env.VITE_OLLAMA_MODEL': JSON.stringify(env.ollamaModel),
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-motion': ['framer-motion'],
+            'vendor-tiptap': ['@tiptap/react', '@tiptap/starter-kit', '@tiptap/extension-highlight', '@tiptap/extension-image', '@tiptap/extension-placeholder', '@tiptap/core'],
+            'vendor-charts': ['recharts'],
+          },
+        },
+      },
     },
     plugins: [
     injectEnv,

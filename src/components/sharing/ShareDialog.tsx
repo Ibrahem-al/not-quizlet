@@ -92,6 +92,7 @@ export function ShareDialog({ itemType, itemId, itemName, sharingMode: initialSh
 
   // Handle sharing mode change
   const handleModeChange = async (mode: SharingMode) => {
+    const previousMode = sharingMode;
     setSharingMode(mode);
     try {
       await updateSharingMode(itemType, itemId, mode);
@@ -100,7 +101,8 @@ export function ShareDialog({ itemType, itemId, itemName, sharingMode: initialSh
         await handleCreateLink();
       }
     } catch {
-      // Error handled by store
+      // Revert UI to previous mode since the DB update failed
+      setSharingMode(previousMode);
     }
   };
 

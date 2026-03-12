@@ -1,10 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import type { PanInfo } from 'framer-motion';
 import type { Card } from '../../types';
 
 const flipSpring = { type: 'spring' as const, stiffness: 280, damping: 26 };
 const defaultSpring = { type: 'spring' as const, stiffness: 300, damping: 30 };
+
+/** Extract plain text from HTML string */
+function getPlainText(html: string): string {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return (div.textContent || div.innerText || '').trim();
+}
 
 interface FlashcardProps {
   card: Card;
@@ -27,13 +34,15 @@ export function Flashcard({
   const [wordsRevealed, setWordsRevealed] = useState(0);
   const [exitDirection, setExitDirection] = useState<'left' | 'right' | 'down' | null>(null);
 
-  const definitionWords = card.definition.trim().split(/\s+/).filter(Boolean);
-  const visibleDefinition =
-    wordsRevealed > 0
-      ? definitionWords.slice(0, wordsRevealed).join(' ')
-      : flipped
-        ? card.definition
-        : '';
+  // Use plain text for progressive word reveal (HTML tags break word splitting)
+  const plainTextDef = useMemo(() => getPlainText(card.definition), [card.definition]);
+  const plainTextWords = useMemo(() => plainTextDef.split(/\s+/).filter(Boolean), [plainTextDef]);
+
+  // Progressive reveal uses plain text words; full view shows HTML
+  const showFullDefinition = flipped && wordsRevealed === 0;
+  const visiblePlainText = wordsRevealed > 0
+    ? plainTextWords.slice(0, wordsRevealed).join(' ')
+    : '';
 
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -71,8 +80,8 @@ export function Flashcard({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === ' ') {
         e.preventDefault();
-        if (wordsRevealed < definitionWords.length && flipped) {
-          setWordsRevealed((w) => Math.min(w + 1, definitionWords.length));
+        if (wordsRevealed < plainTextWords.length && flipped) {
+          setWordsRevealed((w) => Math.min(w + 1, plainTextWords.length));
         } else {
           setFlipped((f) => !f);
           if (!flipped) setWordsRevealed(0);
@@ -85,11 +94,11 @@ export function Flashcard({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isActive, flipped, wordsRevealed, definitionWords.length, onPrev, onNext, onRate]);
+  }, [isActive, flipped, wordsRevealed, plainTextWords.length, onPrev, onNext, onRate]);
 
   const handleFlip = () => {
-    if (wordsRevealed < definitionWords.length && flipped) {
-      setWordsRevealed((w) => Math.min(w + 1, definitionWords.length));
+    if (wordsRevealed < plainTextWords.length && flipped) {
+      setWordsRevealed((w) => Math.min(w + 1, plainTextWords.length));
     } else {
       setFlipped((f) => !f);
       if (!flipped) setWordsRevealed(0);
@@ -134,42 +143,42 @@ export function Flashcard({
         >
           {/* Front: term */}
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center rounded-[var(--radius-card)] bg-[var(--color-surface)]"
+            className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center rounded-[var(--radius-card)] bg-[var(--color-surface)] overflow-y-auto"
             style={{
               backfaceVisibility: 'hidden',
               transform: 'rotateY(0deg)',
               WebkitBackfaceVisibility: 'hidden',
             }}
           >
-            <p
-              className="text-lg text-[var(--color-text)]"
+            <div
+              className="text-lg text-[var(--color-text)] study-content"
               dangerouslySetInnerHTML={{ __html: card.term }}
             />
-            {card.imageData && (
-              <img
-                src={card.imageData}
-                alt=""
-                className="mt-2 max-h-32 object-contain rounded-lg"
-              />
-            )}
-            <span className="mt-2 text-sm text-[var(--color-text-secondary)]">
+            <span className="mt-2 text-sm text-[var(--color-text-secondary)] shrink-0">
               Tap or press Space to flip
             </span>
           </div>
           {/* Back: definition */}
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center rounded-[var(--radius-card)] bg-[var(--color-surface)]"
+            className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center rounded-[var(--radius-card)] bg-[var(--color-surface)] overflow-y-auto"
             style={{
               backfaceVisibility: 'hidden',
               transform: 'rotateY(180deg)',
               WebkitBackfaceVisibility: 'hidden',
             }}
           >
-            <p className="text-lg text-[var(--color-text)] whitespace-pre-wrap">
-              {visibleDefinition}
-            </p>
-            {wordsRevealed > 0 && wordsRevealed < definitionWords.length && (
-              <span className="mt-2 text-sm text-[var(--color-text-secondary)]">
+            {showFullDefinition ? (
+              <div
+                className="text-lg text-[var(--color-text)] study-content"
+                dangerouslySetInnerHTML={{ __html: card.definition }}
+              />
+            ) : (
+              <p className="text-lg text-[var(--color-text)] whitespace-pre-wrap">
+                {visiblePlainText}
+              </p>
+            )}
+            {wordsRevealed > 0 && wordsRevealed < plainTextWords.length && (
+              <span className="mt-2 text-sm text-[var(--color-text-secondary)] shrink-0">
                 Space: reveal next word
               </span>
             )}

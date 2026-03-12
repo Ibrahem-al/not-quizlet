@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(find c:UsersibrahOneDriveDocumentsCursornot_quizletsrctypes -name *.ts -type f)"
+    ]
+  }
+}

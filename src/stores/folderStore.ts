@@ -173,17 +173,21 @@ export const useFolderStore = create<FolderState & FolderActions>((set, get) => 
 
       const folders: Folder[] = (data || []).map(mapDbFolderToFolder);
 
-      // Count items per folder
-      const foldersWithCount = await Promise.all(
-        folders.map(async (folder) => {
-          if (!supabase) return { ...folder, itemCount: 0 };
-          const { count } = await supabase
-            .from('folder_items')
-            .select('*', { count: 'exact', head: true })
-            .eq('folder_id', folder.id);
-          return { ...folder, itemCount: count ?? 0 };
-        })
-      );
+      // Count items per folder in a single query instead of N+1
+      const countMap = new Map<string, number>();
+      if (folders.length > 0) {
+        const { data: allItems } = await supabase
+          .from('folder_items')
+          .select('folder_id');
+        for (const item of allItems || []) {
+          const fid = item.folder_id as string;
+          countMap.set(fid, (countMap.get(fid) || 0) + 1);
+        }
+      }
+      const foldersWithCount = folders.map((folder) => ({
+        ...folder,
+        itemCount: countMap.get(folder.id) ?? 0,
+      }));
 
       set({ folders: foldersWithCount, loaded: true });
 

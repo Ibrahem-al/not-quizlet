@@ -13,6 +13,8 @@ import {
   MoreVertical,
   Edit3,
   Folder,
+  Printer,
+  Zap,
 } from 'lucide-react';
 import { useDebouncedCallback } from 'use-debounce';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -28,11 +30,14 @@ import { useStudySet } from '../hooks/useStudySet';
 import { useSetPattern } from '../hooks/useSetPattern';
 import { useStudyStore } from '../stores/studyStore';
 import { useAuthStore } from '../stores/authStore';
+import { useLiveGameStore } from '../stores/liveGameStore';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { useTranslation } from '../hooks/useTranslation';
 import { validateSet, validateCard, type ValidationError } from '../lib/validation';
 import { parseImportText } from '../lib/importText';
 import { uuid, timestamp } from '../lib/utils';
 import { PhotoImportModal } from '../components/import/PhotoImportModal';
+import { PrintDialog } from '../components/print/PrintDialog';
 import type { Card as CardType, StudySet } from '../types';
 
 const modes = [
@@ -79,6 +84,7 @@ export function SetDetailPage() {
   const [editingMeta, setEditingMeta] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [cardErrors, setCardErrors] = useState<Record<string, ValidationError[]>>({});
   const moreRef = useRef<HTMLDivElement>(null);
 
@@ -223,6 +229,16 @@ export function SetDetailPage() {
   // Check if current user owns this set
   const isOwner = !displaySet.userId || displaySet.userId === user?.id;
 
+  const createSession = useLiveGameStore((s) => s.createSession);
+  const [startingLive, setStartingLive] = useState(false);
+
+  const handleStartLiveGame = async () => {
+    setStartingLive(true);
+    const sessionId = await createSession(displaySet);
+    setStartingLive(false);
+    if (sessionId) navigate(`/live/host/${sessionId}`);
+  };
+
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <AnimatePresence>
@@ -258,6 +274,12 @@ export function SetDetailPage() {
           setToast(`${pairs.length} cards added from photo`);
         }}
         onToast={setToast}
+      />
+      <PrintDialog
+        isOpen={showPrintDialog}
+        onClose={() => setShowPrintDialog(false)}
+        cards={cards}
+        setTitle={displaySet.title}
       />
       <MoveToFolderDialog
         setId={displaySet.id}
@@ -447,6 +469,30 @@ export function SetDetailPage() {
                 )
               )}
             </div>
+
+            {/* Live Game — host only, Supabase required */}
+            {isOwner && canStartStudying && isSupabaseConfigured() && (
+              <div className="mt-3">
+                <button
+                  onClick={handleStartLiveGame}
+                  disabled={startingLive}
+                  className="w-full flex items-center gap-4 px-5 py-4 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] hover:border-yellow-400/60 hover:bg-yellow-500/5 transition-all duration-200 group disabled:opacity-60 disabled:cursor-not-allowed text-left"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center shadow-lg shrink-0">
+                    <Zap className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-[var(--color-text)] group-hover:text-yellow-600 dark:group-hover:text-yellow-400 transition-colors">
+                      {startingLive ? 'Starting…' : 'Live Game'}
+                    </div>
+                    <div className="text-xs text-[var(--color-text-tertiary)] mt-0.5">
+                      Host a real-time multiplayer quiz — players join with a code
+                    </div>
+                  </div>
+                  <Zap className="w-4 h-4 text-yellow-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </button>
+              </div>
+            )}
           </section>
         )}
 
@@ -495,6 +541,13 @@ export function SetDetailPage() {
                         onClick={() => { setShowMoveDialog(true); setShowMoreActions(false); }}
                       >
                         <Folder className="w-4 h-4 text-[var(--color-warning)]" /> Move to folder
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
+                        onClick={() => { setShowPrintDialog(true); setShowMoreActions(false); }}
+                      >
+                        <Printer className="w-4 h-4 text-[var(--color-primary)]" /> Print activities
                       </button>
                       <div className="border-t border-[var(--color-border)] my-1" />
                       <button

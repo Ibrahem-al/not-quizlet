@@ -1,13 +1,14 @@
 import { create } from 'zustand';
-import type { 
-  SharePermission, 
-  ShareLink, 
-  SharingMode, 
-  PermissionLevel, 
+import type {
+  SharePermission,
+  ShareLink,
+  SharingMode,
+  PermissionLevel,
   ItemType,
   PendingInvite,
 } from '../types/sharing';
 import { supabase } from '../lib/supabase';
+import { useStudyStore } from './studyStore';
 
 interface SharingState {
   // Cache
@@ -72,10 +73,16 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
     set({ isLoading: true, error: null });
     try {
       if (!supabase) throw new Error('Not authenticated');
+
+      // Get current user for shared_by_user_id (required NOT NULL column)
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user?.id) throw new Error('Not authenticated');
+
       const { error } = await supabase.from('sharing_permissions').insert({
         item_type: itemType,
         item_id: itemId,
         shared_with_email: email,
+        shared_by_user_id: userData.user.id,
         permission_level: permissionLevel,
         expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
       });
@@ -85,7 +92,12 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
       // Refresh permissions
       await get().getItemPermissions(itemType, itemId);
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to share' });
+      console.error('[sharingStore] shareWithUser failed:', err);
+      const raw = err instanceof Error ? err.message : (err as { message?: string })?.message ?? 'Failed to share';
+      const friendly = raw.includes('relation') && raw.includes('does not exist')
+        ? 'Database migration required — run migration 007 in the Supabase SQL Editor.'
+        : raw || 'Failed to share';
+      set({ error: friendly });
       throw err;
     } finally {
       set({ isLoading: false });
@@ -102,7 +114,17 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
         .eq('id', permissionId);
 
       if (error) throw error;
+
+      // Optimistically remove from cache so the list updates immediately
+      set((state) => {
+        const newMap = new Map(state.itemPermissions);
+        for (const [key, perms] of newMap) {
+          newMap.set(key, perms.filter((p) => p.id !== permissionId));
+        }
+        return { itemPermissions: newMap };
+      });
     } catch (err) {
+      console.error('[sharingStore] removeUserAccess failed:', err);
       set({ error: err instanceof Error ? err.message : 'Failed to remove access' });
       throw err;
     } finally {
@@ -121,6 +143,7 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
 
       if (error) throw error;
     } catch (err) {
+      console.error('[sharingStore] updateUserPermission failed:', err);
       set({ error: err instanceof Error ? err.message : 'Failed to update permission' });
       throw err;
     } finally {
@@ -157,8 +180,14 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
       if (error) throw error;
       return data?.token ?? null;
     } catch (err) {
-      console.error('Failed to create share link:', err);
-      set({ error: err instanceof Error ? err.message : 'Failed to create share link' });
+      console.error('[sharingStore] createShareLink failed:', err);
+      const raw = err instanceof Error ? err.message : (err as { message?: string })?.message ?? 'Failed to create share link';
+      const friendly = raw.includes('relation') && raw.includes('does not exist')
+        ? 'Database migration required — run migration 007 in the Supabase SQL Editor.'
+        : raw.includes('violates row-level security')
+          ? 'Permission denied — you can only create links for your own items.'
+          : raw || 'Failed to create share link';
+      set({ error: friendly });
       return null;
     } finally {
       set({ isLoading: false });
@@ -176,6 +205,7 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
 
       if (error) throw error;
     } catch (err) {
+      console.error('[sharingStore] revokeShareLink failed:', err);
       set({ error: err instanceof Error ? err.message : 'Failed to revoke link' });
       throw err;
     } finally {
@@ -258,18 +288,50 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
     try {
       if (!supabase) throw new Error('Not authenticated');
       const table = itemType === 'set' ? 'study_sets' : 'folders';
-      // Update both sharing_mode (new) and visibility (legacy) for backwards compatibility
-      const { error } = await supabase
+      // The folders table does NOT have a visibility column — only update it for sets
+      const updates: Record<string, string> = { sharing_mode: mode };
+      if (itemType === 'set') {
+        updates.visibility = mode === 'public' ? 'public' : 'private';
+      }
+      const { data, error } = await supabase
         .from(table)
-        .update({ 
-          sharing_mode: mode,
-          visibility: mode === 'public' ? 'public' : 'private'
-        })
-        .eq('id', itemId);
+        .update(updates)
+        .eq('id', itemId)
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        const msg = error.message || '';
+        if (msg.includes('schema cache') || msg.includes('column')) {
+          throw new Error('Database migration required — run migration 007 in the Supabase SQL Editor.');
+        }
+        if (msg.includes('0 rows') || msg.includes('no rows')) {
+          throw new Error('Permission denied — could not update sharing mode.');
+        }
+        throw error;
+      }
+      if (!data) {
+        throw new Error('Permission denied — could not update sharing mode.');
+      }
+
+      // Sync the new sharing mode into the local study store so the UI
+      // reflects the change immediately without requiring a full reload.
+      if (itemType === 'set') {
+        const studyState = useStudyStore.getState();
+        const idx = studyState.sets.findIndex((s) => s.id === itemId);
+        if (idx !== -1) {
+          const updated = [...studyState.sets];
+          updated[idx] = { ...updated[idx], sharingMode: mode };
+          useStudyStore.setState({ sets: updated });
+        }
+      }
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to update sharing mode' });
+      const msg =
+        err instanceof Error
+          ? err.message
+          : (err as { message?: string })?.message ?? 'Failed to update sharing mode';
+      console.error('[sharingStore] updateSharingMode failed:', err);
+      set({ error: msg });
       throw err;
     } finally {
       set({ isLoading: false });
@@ -296,6 +358,11 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
     set({ isLoading: true, error: null });
     try {
       if (!supabase) throw new Error('Not authenticated');
+
+      // Get current user
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user?.id) throw new Error('Not authenticated');
+
       // Validate the share link
       const { data, error } = await supabase.rpc('validate_share_link', {
         p_token: token,
@@ -307,16 +374,38 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
 
       const shareData = data[0];
 
+      // Get share link details to find the creator (for shared_by_user_id)
+      const { data: linkData } = await supabase
+        .from('share_links')
+        .select('created_by')
+        .eq('token', token)
+        .single();
+
       // Increment access count
       await supabase.rpc('increment_share_link_access', {
         p_token: token,
       });
+
+      // Create a persistent sharing_permissions entry for the accepting user
+      // Skip if user is the link creator (they already own the item)
+      if (linkData?.created_by && linkData.created_by !== userData.user.id) {
+        await supabase.from('sharing_permissions').insert({
+          item_type: shareData.item_type,
+          item_id: shareData.item_id,
+          shared_with_user_id: userData.user.id,
+          permission_level: shareData.permission_level,
+          shared_by_user_id: linkData.created_by,
+        });
+        // Unique constraint (item_type, item_id, shared_with_user_id) will
+        // harmlessly reject duplicates if user clicks the link again
+      }
 
       return {
         itemType: shareData.item_type as ItemType,
         itemId: shareData.item_id,
       };
     } catch (err) {
+      console.error('[sharingStore] acceptShareLink failed:', err);
       set({ error: err instanceof Error ? err.message : 'Failed to accept share' });
       return null;
     } finally {
@@ -331,10 +420,12 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
         return;
       }
       const user = await supabase.auth.getUser();
-      if (!user.data.user?.id) {
+      if (!user.data.user?.id || !user.data.user?.email) {
         set({ pendingInvites: [] });
         return;
       }
+
+      // Query by both user_id and email to catch email-based invites
       const { data, error } = await supabase
         .from('sharing_permissions')
         .select(`
@@ -346,17 +437,58 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
           shared_at,
           expires_at
         `)
-        .eq('shared_with_user_id', user.data.user.id);
+        .or(`shared_with_user_id.eq.${user.data.user.id},shared_with_email.eq.${user.data.user.email}`);
 
       if (error) throw error;
+      if (!data || data.length === 0) {
+        set({ pendingInvites: [] });
+        return;
+      }
 
-      // TODO: Join with item names and shared_by email
-      const invites: PendingInvite[] = (data || []).map((inv) => ({
+      // Batch-fetch actual item names
+      const setIds = data.filter(d => d.item_type === 'set').map(d => d.item_id);
+      const folderIds = data.filter(d => d.item_type === 'folder').map(d => d.item_id);
+
+      const setNameMap = new Map<string, string>();
+      if (setIds.length > 0) {
+        const { data: sets } = await supabase
+          .from('study_sets')
+          .select('id, title')
+          .in('id', setIds);
+        sets?.forEach((s: { id: string; title: string }) => setNameMap.set(s.id, s.title));
+      }
+
+      const folderNameMap = new Map<string, string>();
+      if (folderIds.length > 0) {
+        const { data: folders } = await supabase
+          .from('folders')
+          .select('id, name')
+          .in('id', folderIds);
+        folders?.forEach((f: { id: string; name: string }) => folderNameMap.set(f.id, f.name));
+      }
+
+      // Fetch sharer emails via RPC
+      const sharerIds = [...new Set(data.map(d => d.shared_by_user_id).filter(Boolean))];
+      const emailMap = new Map<string, string>();
+      if (sharerIds.length > 0) {
+        try {
+          const { data: emails } = await supabase.rpc('get_user_emails', { user_ids: sharerIds });
+          if (emails) {
+            (emails as { user_id: string; email: string }[]).forEach(e => emailMap.set(e.user_id, e.email));
+          }
+        } catch {
+          // RPC may not exist yet if migration not applied; fall back gracefully
+        }
+      }
+
+      const invites: PendingInvite[] = data.map((inv) => ({
         id: inv.id,
         itemType: inv.item_type as ItemType,
         itemId: inv.item_id,
-        itemName: 'Shared Item', // Would need join
-        sharedByEmail: 'Unknown', // Would need join
+        itemName: inv.item_type === 'set'
+          ? (setNameMap.get(inv.item_id) || 'Untitled Set')
+          : (folderNameMap.get(inv.item_id) || 'Untitled Folder'),
+        sharedByEmail: emailMap.get(inv.shared_by_user_id) || 'Unknown',
         sharedByUserId: inv.shared_by_user_id,
         permissionLevel: inv.permission_level as PermissionLevel,
         sharedAt: new Date(inv.shared_at).getTime(),
@@ -364,7 +496,8 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
       }));
 
       set({ pendingInvites: invites });
-    } catch {
+    } catch (err) {
+      console.error('[sharingStore] loadPendingInvites failed:', err);
       set({ pendingInvites: [] });
     }
   },

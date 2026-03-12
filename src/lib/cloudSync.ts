@@ -81,6 +81,17 @@ export async function fetchPublicSets(): Promise<StudySet[]> {
   return (data ?? []).map((r) => fromRow(r as StudySetRow));
 }
 
+export async function fetchSetById(setId: string): Promise<StudySet | null> {
+  if (!isSupabaseConfigured() || !supabase) return null;
+  const { data, error } = await supabase
+    .from('study_sets')
+    .select('*')
+    .eq('id', setId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return fromRow(data as StudySetRow);
+}
+
 export async function syncSetToCloud(set: StudySet, userId: string): Promise<void> {
   if (!isSupabaseConfigured() || !supabase) return;
   const row = toRow(set, userId);

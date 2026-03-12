@@ -1,22 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { HomePage } from './pages/HomePage';
-import { SetDetailPage } from './pages/SetDetailPage';
-import { NewSetPage } from './pages/NewSetPage';
-import { StudyPage } from './pages/StudyPage';
-import { StatsPage } from './pages/StatsPage';
-import { PublicSetsPage } from './pages/PublicSetsPage';
-import { SignInPage } from './pages/SignInPage';
-import { SignUpPage } from './pages/SignUpPage';
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
-import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { AccountSettingsPage } from './pages/AccountSettingsPage';
-import FolderDetailPage from './pages/FolderDetailPage';
-import SharedWithMePage from './pages/SharedWithMePage';
-import AcceptSharePage from './pages/AcceptSharePage';
-import { CommandPalette } from './components/ui/CommandPalette';
 import { ToastManager } from './components/ui/ToastManager';
+
+// Lazy-loaded pages
+const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })));
+const SetDetailPage = lazy(() => import('./pages/SetDetailPage').then(m => ({ default: m.SetDetailPage })));
+const NewSetPage = lazy(() => import('./pages/NewSetPage').then(m => ({ default: m.NewSetPage })));
+const StudyPage = lazy(() => import('./pages/StudyPage').then(m => ({ default: m.StudyPage })));
+const StatsPage = lazy(() => import('./pages/StatsPage').then(m => ({ default: m.StatsPage })));
+const PublicSetsPage = lazy(() => import('./pages/PublicSetsPage').then(m => ({ default: m.PublicSetsPage })));
+const SignInPage = lazy(() => import('./pages/SignInPage').then(m => ({ default: m.SignInPage })));
+const SignUpPage = lazy(() => import('./pages/SignUpPage').then(m => ({ default: m.SignUpPage })));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })));
+const AccountSettingsPage = lazy(() => import('./pages/AccountSettingsPage').then(m => ({ default: m.AccountSettingsPage })));
+const FolderDetailPage = lazy(() => import('./pages/FolderDetailPage'));
+const SharedWithMePage = lazy(() => import('./pages/SharedWithMePage'));
+const AcceptSharePage = lazy(() => import('./pages/AcceptSharePage'));
+const JoinPage = lazy(() => import('./pages/live/JoinPage').then(m => ({ default: m.JoinPage })));
+const HostPage = lazy(() => import('./pages/live/HostPage').then(m => ({ default: m.HostPage })));
+const PlayerGamePage = lazy(() => import('./pages/live/PlayerGamePage').then(m => ({ default: m.PlayerGamePage })));
+const CommandPalette = lazy(() => import('./components/ui/CommandPalette').then(m => ({ default: m.CommandPalette })));
 import { useAuthStore } from './stores/authStore';
 import { useStudyStore } from './stores/studyStore';
 import { useThemeStore } from './stores/themeStore';
@@ -104,6 +109,7 @@ function App() {
   return (
     <BrowserRouter>
       <div dir={dir} className="min-h-screen">
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" /></div>}>
       <AnimatePresence mode="wait">
         <Routes>
           <Route path="/" element={withPageTransition(HomePage)()} />
@@ -121,9 +127,15 @@ function App() {
           <Route path="/sets/:id/edit" element={<RedirectEditToSet />} />
           <Route path="/sets/:id/study/:mode" element={withPageTransition(StudyPage)()} />
           <Route path="/stats" element={withPageTransition(StatsPage)()} />
+          <Route path="/live" element={withPageTransition(JoinPage)()} />
+          <Route path="/live/play" element={withPageTransition(PlayerGamePage)()} />
+          <Route path="/live/host/:sessionId" element={withPageTransition(HostPage)()} />
         </Routes>
       </AnimatePresence>
-      <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
+      </Suspense>
       <ToastManager />
       </div>
     </BrowserRouter>

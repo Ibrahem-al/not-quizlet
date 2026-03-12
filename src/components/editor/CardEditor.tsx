@@ -172,9 +172,10 @@ export function CardEditor({ card, index, isActive, isDuplicateTerm, onFocus, on
       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
       onFocus={onFocus}
     >
-      <div className="studio-card-badge absolute -top-3 -left-3 z-10 flex items-center gap-1 rounded-full text-xs font-mono px-2 py-1" {...dragHandleProps}>
-        <GripVertical className="w-3.5 h-3.5" aria-hidden />
-        {index + 1}
+      <div className="studio-card-header flex items-center gap-2 px-3 py-1.5 border-b border-[var(--studio-border)]" {...dragHandleProps}>
+        <GripVertical className="w-4 h-4 text-[var(--color-text-secondary)] cursor-grab" aria-hidden />
+        <span className="studio-card-number">{index + 1}</span>
+        <span className="text-[11px] text-[var(--color-text-secondary)] font-medium uppercase tracking-wide select-none">Card</span>
       </div>
 
       {isDuplicateTerm && (

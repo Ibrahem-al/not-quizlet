@@ -179,13 +179,26 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
               transition={spring}
               className="space-y-6"
             >
-              <div
-                className="text-lg font-medium text-[var(--color-text)] study-content"
-                dangerouslySetInnerHTML={{ __html: current.card.term }}
-              />
+              <div className="p-4 rounded-lg bg-[var(--color-primary-muted)]/30 border border-[var(--color-border)]">
+                <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
+                  Term
+                </p>
+                <div
+                  className="text-lg font-medium text-[var(--color-text)] study-content"
+                  dangerouslySetInnerHTML={{ __html: current.card.term }}
+                />
+              </div>
 
               {current.questionType === 'written' && (
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-[var(--color-border)]" />
+                    <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">Your answer</span>
+                    <div className="flex-1 h-px bg-[var(--color-border)]" />
+                  </div>
+                  <p className="text-sm text-[var(--color-text-secondary)]">
+                    Type the definition:
+                  </p>
                   <Input
                     placeholder={t('typeDefinition')}
                     value={writtenAnswer}
@@ -200,6 +213,12 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
               )}
 
               {current.questionType === 'multiple' && current.options && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-[var(--color-border)]" />
+                    <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">Choose your answer</span>
+                    <div className="flex-1 h-px bg-[var(--color-border)]" />
+                  </div>
                 <div className="flex flex-col gap-2">
                   {current.options.map((opt, i) => (
                     <motion.div key={i} whileTap={{ scale: 0.98 }} transition={spring}>
@@ -209,24 +228,38 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                         onClick={() => submitMultiple(i)}
                         disabled={answered}
                       >
-                        <span dangerouslySetInnerHTML={{ __html: opt }} />
+                        <div className="study-content" dangerouslySetInnerHTML={{ __html: opt }} />
                       </Button>
                     </motion.div>
                   ))}
                 </div>
+                </div>
               )}
 
               {current.questionType === 'truefalse' && current.options && (
-                <div className="space-y-3">
-                  <div className="text-[var(--color-text-secondary)] study-content">
-                    {t('definition')}: <span dangerouslySetInnerHTML={{ __html: current.options[0] }} />
+                <div className="space-y-4">
+                  <div className="p-4 rounded-lg bg-[var(--color-background)] border-2 border-dashed border-[var(--color-border)]">
+                    <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
+                      Proposed Definition
+                    </p>
+                    <div className="text-base text-[var(--color-text)] study-content" dangerouslySetInnerHTML={{ __html: current.options[0] }} />
                   </div>
-                  <p className="text-sm text-[var(--color-text)]">{t('isThisCorrect')}</p>
-                  <div className="flex gap-2">
+                  <div className="text-center">
+                    <p className="text-base font-medium text-[var(--color-text)]">
+                      {t('isThisCorrect')}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-[var(--color-border)]" />
+                    <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">Your answer</span>
+                    <div className="flex-1 h-px bg-[var(--color-border)]" />
+                  </div>
+                  <div className="flex gap-3 justify-center">
                     <Button
                       variant="secondary"
                       onClick={() => submitTrueFalse(true)}
                       disabled={answered}
+                      className="min-w-[100px] bg-green-500/10 hover:bg-green-500/20 text-green-600 border-green-500/30"
                     >
                       {t('true')}
                     </Button>
@@ -234,6 +267,7 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                       variant="secondary"
                       onClick={() => submitTrueFalse(false)}
                       disabled={answered}
+                      className="min-w-[100px] bg-red-500/10 hover:bg-red-500/20 text-red-600 border-red-500/30"
                     >
                       {t('false')}
                     </Button>
@@ -247,9 +281,12 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                   animate={{ opacity: 1 }}
                   className={`p-3 rounded-lg ${correct ? 'bg-[var(--color-success)]/20' : 'bg-[var(--color-danger)]/20'}`}
                 >
-                  <div className="text-sm text-[var(--color-text)] study-content">
+                  <div className="text-sm text-[var(--color-text)]">
                     {correct ? t('correct') : (
-                      <span dangerouslySetInnerHTML={{ __html: `${t('correctAnswer', { answer: '' })} ${current.card.definition}` }} />
+                      <>
+                        <span>{t('correctAnswer', { answer: '' })}</span>
+                        <div className="study-content mt-1" dangerouslySetInnerHTML={{ __html: current.card.definition }} />
+                      </>
                     )}
                   </div>
                 </motion.div>

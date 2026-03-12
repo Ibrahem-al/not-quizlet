@@ -3,11 +3,12 @@ import type { StudySet, Card, Settings } from '../types';
 import { uuid, timestamp } from '../lib/utils';
 import * as db from '../lib/db';
 import { useAuthStore } from './authStore';
-import { fetchUserSets, fetchPublicSets, syncSetToCloud, deleteSetFromCloud } from '../lib/cloudSync';
+import { fetchUserSets, fetchPublicSets, fetchSetById, syncSetToCloud, deleteSetFromCloud } from '../lib/cloudSync';
 
 interface StudyState {
   sets: StudySet[];
   publicSets: StudySet[];
+  sharedSets: Map<string, StudySet>;
   currentSetId: string | null;
   settings: Settings | null;
   loaded: boolean;
@@ -25,6 +26,7 @@ interface StudyActions {
   updateCard: (setId: string, cardId: string, updates: Partial<Card>) => Promise<void>;
   deleteCard: (setId: string, cardId: string) => Promise<void>;
   replaceSet: (set: StudySet) => Promise<void>;
+  fetchSharedSet: (setId: string) => Promise<StudySet | null>;
   loadSettings: () => Promise<void>;
   putSettings: (s: Settings) => Promise<void>;
 }
@@ -55,6 +57,7 @@ const defaultCard = (partial: Partial<Card>): Card => ({
 export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
   sets: [],
   publicSets: [],
+  sharedSets: new Map(),
   currentSetId: null,
   settings: null,
   loaded: false,
@@ -229,6 +232,28 @@ export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
     if (user) {
       try { await syncSetToCloud(studySet, user.id); } catch { /* ignore */ }
     }
+  },
+
+  fetchSharedSet: async (setId: string) => {
+    // Check local cache first
+    const existing = get().sharedSets.get(setId);
+    if (existing) return existing;
+
+    // Check if it's in our own sets
+    const ownSet = get().sets.find(s => s.id === setId);
+    if (ownSet) return ownSet;
+
+    // Fetch from Supabase (RLS allows access to shared sets)
+    const fetched = await fetchSetById(setId);
+    if (fetched) {
+      set(state => {
+        const newMap = new Map(state.sharedSets);
+        newMap.set(setId, fetched);
+        return { sharedSets: newMap };
+      });
+      return fetched;
+    }
+    return null;
   },
 
   loadSettings: async () => {

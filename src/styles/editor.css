@@ -28,14 +28,14 @@
 }
 
 /* TipTap content area */
-.studio-editor .ProseMirror {
+.ProseMirror.studio-editor {
   outline: none;
   min-height: 120px;
   padding: 12px 16px;
   color: var(--color-text);
 }
 
-.studio-editor .ProseMirror p.is-editor-empty:first-child::before {
+.ProseMirror.studio-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
   color: var(--color-text-secondary);
@@ -43,17 +43,22 @@
   opacity: 0.6;
 }
 
-.studio-editor .ProseMirror p.is-editor-empty:first-child:focus::before {
+.ProseMirror.studio-editor p.is-editor-empty:first-child:focus::before {
   opacity: 0.4;
 }
 
-.studio-editor .ProseMirror img {
-  max-width: 100%;
+.ProseMirror.studio-editor img {
+  max-width: 120px;
+  max-height: 80px;
   height: auto;
-  border-radius: 8px;
+  border-radius: 6px;
+  object-fit: contain;
+  display: inline-block;
+  vertical-align: middle;
+  margin: 2px 4px 2px 0;
 }
 
-.studio-editor .ProseMirror mark {
+.ProseMirror.studio-editor mark {
   background: rgba(255, 205, 31, 0.4);
   padding: 0 2px;
 }
@@ -147,12 +152,24 @@
   animation: studio-shake 0.4s ease-in-out;
 }
 
-/* Card badge (index + drag handle) – always readable */
-.studio-card-badge {
-  background: var(--color-primary) !important;
-  color: white !important;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 80%, black);
-  box-shadow: 0 2px 6px rgba(66, 85, 255, 0.35);
+/* Card header with number and drag handle */
+.studio-card-header {
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--studio-surface));
+  cursor: grab;
+  user-select: none;
+}
+
+.studio-card-header:active {
+  cursor: grabbing;
+}
+
+.studio-card-number {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary);
+  min-width: 1.5rem;
+  text-align: center;
 }
 
 /* Add-card placeholder button – clear CTA */
@@ -225,19 +242,19 @@
 }
 
 /* Inline card editor (Notion-style) – border/box on wrapper in EditableCard */
-.inline-editor .ProseMirror {
+.ProseMirror.inline-editor {
   outline: none;
   min-height: 22px;
   padding: 0;
   color: var(--color-text);
   font-size: 0.9375rem;
 }
-.inline-editor .ProseMirror:focus {
+.ProseMirror.inline-editor:focus {
   outline: none;
   box-shadow: none;
 }
 
-.inline-editor .ProseMirror p.is-editor-empty:first-child::before {
+.ProseMirror.inline-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
   color: var(--color-text-secondary);
@@ -246,14 +263,19 @@
   font-style: italic;
 }
 
-.inline-editor .ProseMirror p.is-editor-empty:first-child:focus::before {
+.ProseMirror.inline-editor p.is-editor-empty:first-child:focus::before {
   opacity: 0.4;
 }
 
-.inline-editor .ProseMirror img {
-  max-width: 100%;
+.ProseMirror.inline-editor img {
+  max-width: 100px;
+  max-height: 64px;
   height: auto;
-  border-radius: 6px;
+  border-radius: 4px;
+  object-fit: contain;
+  display: inline-block;
+  vertical-align: middle;
+  margin: 2px 4px 2px 0;
 }
 
 /* ---------------------------------------------------------------------------
@@ -270,12 +292,14 @@
 }
 
 .study-content img {
-  max-width: 100%;
-  max-height: 200px;
+  max-width: 280px;
+  max-height: 140px;
   height: auto;
   border-radius: 8px;
+  object-fit: contain;
   display: inline-block;
   vertical-align: middle;
+  margin: 4px 4px;
 }
 
 /* Ensure text alignment looks good */

@@ -191,15 +191,14 @@ export function EditableCard({
       className={`group/card relative rounded-[var(--radius-card)] border ${hasErrors ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] shadow-[var(--shadow-sm)] hover:border-[var(--color-text-secondary)]/25 focus-within:border-[var(--color-border-focus)] focus-within:ring-1 focus-within:ring-[var(--color-primary)]/20 transition-colors duration-[var(--duration-fast)]`}
     >
       <div className="flex items-stretch min-h-[52px]">
-        {dragHandleProps && (
-          <div
-            className="flex items-center pl-1 pr-2 opacity-60 group-hover/card:opacity-100 transition-opacity cursor-grab active:cursor-grabbing text-[var(--color-text-secondary)]"
-            {...dragHandleProps}
-            aria-hidden
-          >
-            <GripVertical className="w-4 h-4" />
-          </div>
-        )}
+        <div
+          className="flex items-center gap-1 pl-2 pr-2 cursor-grab active:cursor-grabbing text-[var(--color-text-secondary)]"
+          {...(dragHandleProps ?? {})}
+          aria-hidden
+        >
+          <span className="text-sm font-semibold tabular-nums text-[var(--color-primary)] select-none min-w-[1.25rem] text-center">{cardIndex + 1}</span>
+          <GripVertical className="w-4 h-4 opacity-40 group-hover/card:opacity-100 transition-opacity" />
+        </div>
         <div className="flex-1 grid grid-cols-[1fr_1fr] gap-2 min-w-0">
           <div
             className={`min-h-[44px] px-3 py-2 rounded-l-md focus-within:bg-[var(--color-background)]/50 ${termErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}

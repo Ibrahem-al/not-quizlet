@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useSharingStore } from '../stores/sharingStore';
 import { useAuthStore } from '../stores/authStore';
+import { useStudyStore } from '../stores/studyStore';
 import { useTranslation } from '../hooks/useTranslation';
 import { Button } from '../components/ui/Button';
 import { AppLayout } from '../components/layout/AppLayout';
@@ -28,14 +29,24 @@ export default function AcceptSharePage() {
     itemType: 'set' | 'folder';
     itemId: string;
   } | null>(null);
+  // Prevent the error state from flashing before the async accept call starts
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
     if (token && user) {
-      acceptShareLink(token).then((data) => {
-        if (data) {
-          setShareData(data);
-        }
-      });
+      acceptShareLink(token)
+        .then((data) => {
+          if (data) {
+            setShareData(data);
+            // Pre-warm the cache so "View Item" navigates instantly without "Set not found"
+            if (data.itemType === 'set') {
+              useStudyStore.getState().fetchSharedSet(data.itemId).catch(() => {});
+            }
+          }
+        })
+        .finally(() => setIsInitializing(false));
+    } else {
+      setIsInitializing(false);
     }
   }, [token, user, acceptShareLink]);
 
@@ -80,8 +91,8 @@ export default function AcceptSharePage() {
     );
   }
 
-  // Loading
-  if (isLoading) {
+  // Loading (initializing OR async accept in flight)
+  if (isInitializing || isLoading) {
     return (
       <AppLayout>
         <div className="min-h-[80vh] flex items-center justify-center">
