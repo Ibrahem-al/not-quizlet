@@ -506,3 +506,130 @@ The second game in the registry. A classic memory/concentration game where playe
 - **Moves:** Each pair attempt counts as one move, regardless of match/mismatch.
 - **Completion:** All pairs matched → results screen with confetti, stats, and performance rating.
 - **Rating scale:** Perfect Memory (≤1.2× moves/pairs), Excellent (≤1.8×), Great (≤2.5×), Good (≤3.5×), Keep Practicing (>3.5×).
+
+### Bugs Fixed
+
+#### Bug N: Game froze after first match — flippedIndices never cleared
+**File:** `src/components/modes/games/memory-card-flip/useMemoryCardFlip.ts`
+**Problem:** After a successful match, `flippedIndices` was immediately set to `[]` in the same state update that added the match. However, the second card's flip was never visible because the state transitioned too fast. The original fix (clearing flippedIndices synchronously) actually caused a different problem — the `flippedIndices.length >= 2` guard blocked all subsequent clicks because the matched indices were still present before the first fix.
+**Fix:** On match, keep both indices in `flippedIndices` so both cards visually flip face-up. Lock input (`lockRef`) and use a 600ms `setTimeout` to then clear `flippedIndices` and add the cardId to `matchedCardIds`. This gives the player time to see both cards before they vanish.
+
+#### Bug O: Images beyond the 3rd not visible on cards
+**File:** `src/components/modes/games/memory-card-flip/MemoryCard.tsx`
+**Problem:** The card content area used `line-clamp-4` which hard-caps visible content to 4 CSS lines. Images after the 3rd were completely hidden with no way to see them.
+**Fix:** Replaced `line-clamp-4 overflow-hidden` with `overflow-y-auto flex-1 min-h-0` so the content area becomes scrollable. Each image is constrained to `max-h-[50px]` individually with `display: block` so they stack vertically and all remain accessible via scroll.
+
+#### Bug P: Second card didn't flip before match vanished
+**File:** `src/components/modes/games/memory-card-flip/useMemoryCardFlip.ts`
+**Problem:** When the second card was flipped and it matched, the state update immediately cleared `flippedIndices` and set `matchedCardIds`, so the second card jumped straight from face-down to the vanish animation without ever showing its face-up content. The player couldn't confirm what they matched.
+**Fix:** On match, the second card's index is added to `flippedIndices` immediately (so Framer Motion animates the flip), then a 600ms delay runs before transitioning to the matched state. Input is locked during this window so the player can't flip other cards while the match is being revealed.
+
+---
+
+## Race to Finish Game
+
+### Overview
+The third game in the registry. A board game where players answer study questions to earn dice rolls, then race along a winding path to reach the finish line first. Supports 1–4 players (hot-seat multiplayer). The board features a procedurally generated serpentine road with shortcuts (warp portals), animated player tokens, and a dice-rolling mechanic.
+
+### New Files
+- **`src/components/modes/games/race-to-finish/types.ts`** — Game types and constants:
+  - `AnswerDirection`, `GamePhase` (`config | question | rolling | moving | finished`), `QuestionType`
+  - `RaceConfig` — pre-game options (playerCount, pathLength, answerDirection, questionTypes)
+  - `Player` — id, name, position, color/bgColor/borderColor, emoji
+  - `Shortcut` — from/to cell indices (warp portals)
+  - `BoardCell` — index, content (HTML), label (Term/Definition), optional shortcutTo
+  - `RaceQuestion` — generated question with prompt, options, correct answer, answerWith
+  - `PendingMove` — tracks in-progress movement animation (playerId, fromPos, toPos, shortcutTo, steps)
+  - `RaceGameState` — full runtime state (phase, players, board, shortcuts, winner, stats, pendingMove)
+  - `PLAYER_THEMES` — 4 player color/emoji themes (🚀🔥🌿⚡)
+
+- **`src/components/modes/games/race-to-finish/useRaceToFinish.ts`** — Core game hook:
+  - `generateBoard()` — creates board cells from study cards, cycling term/definition content
+  - `generateShortcuts()` — places 1–3 forward-jumping shortcuts on the board (no backward movement)
+  - `generateQuestion()` — creates written/multiple-choice/true-false questions from cards
+  - `gradeWrittenAnswer()` — fuzzy string matching for written answers (case-insensitive, strips HTML)
+  - Game state machine: config → question → rolling → moving → question (loop) → finished
+  - `handleAnswerResult()` — correct answer → transition to rolling phase; wrong → skip turn (multi) or stay (solo)
+  - `onDiceRollComplete()` — calculates pending move (with shortcut detection), transitions to moving phase
+  - `onMoveComplete()` — applies final position after animation, checks win condition, advances to next player
+
+- **`src/components/modes/games/race-to-finish/GameBoard.tsx`** — Visual board component:
+  - `generatePath()` — procedural serpentine path generation using seeded layout, creating zigzag node positions
+  - `buildSmoothPath()` — converts node positions to SVG cubic bezier path for the road
+  - SVG road rendering with shadow, main road, and dashed center line
+  - Shortcut arcs rendered as dashed cyan SVG paths between cells
+  - Cell circles with numbered labels, content tooltips on hover, shortcut indicators
+  - GO (start) and FINISH cells with special styling
+  - **Floating player tokens** — absolutely positioned `motion.div` elements with spring-physics animation between board positions
+  - **Step-by-step hop animation** — players hop cell-by-cell with delays (350ms per hop, 500ms for shortcut warp)
+  - **Smart scrolling** — `isYInView()` checks if character is in viewport; only scrolls vertically when needed, using smooth behavior
+  - **Turn-change scroll** — auto-scrolls to current player's position on turn change
+  - ResizeObserver for responsive container width tracking
+  - `canvasW = containerW` (no horizontal scroll); SVG viewBox with `preserveAspectRatio` for responsive rendering
+
+- **`src/components/modes/games/race-to-finish/RaceQuestionPanel.tsx`** — Question display:
+  - `splitContent()` — regex-based HTML parser that separates text from `<img>` tags
+  - `RaceContent` component — renders text via `dangerouslySetInnerHTML`, images in a flex grid with `data-count` attribute
+  - Written answer input with Enter-to-submit
+  - Multiple choice buttons
+  - True/False with green/red styled buttons and proposed answer display
+  - Feedback flash (green/red ring) on correct/wrong answer
+  - Player indicator bar with emoji and turn label
+
+- **`src/components/modes/games/race-to-finish/DiceRoll.tsx`** — Dice rolling animation:
+  - `DICE_FACES` — dot position maps for dice faces 1–6
+  - `DiceFace` component — 3×3 grid rendering dice dots
+  - Roll animation: 1.2s of random face cycling (70ms interval), then lands on pre-determined result
+  - Framer Motion shake/bounce during roll, spring settle on land
+  - "Roll Dice" button → rolling → landed (shows move count) → notifies parent after 900ms
+
+- **`src/components/modes/games/race-to-finish/RaceToFinishConfig.tsx`** — Pre-game config:
+  - Player count selector (1–4) with toggle buttons
+  - Path length: stepper (−/+) with manual input + preset buttons (10, 15, 20, 30, 50, 75, 100)
+  - Answer direction toggle (Definition / Term / Both)
+  - Question type checkboxes (Written, Multiple Choice, True/False)
+  - Start Race / Exit buttons
+
+- **`src/components/modes/games/race-to-finish/RaceToFinishResults.tsx`** — End screen:
+  - Solo: "You Finished!" with accuracy percentage
+  - Multiplayer: winner announcement with emoji, final standings sorted by position
+  - Stats grid: questions answered, accuracy percentage
+  - Play Again / Exit buttons with spring animations
+
+- **`src/components/modes/games/RaceToFinishMode.tsx`** — Entry point:
+  - Phase router: config → playing → finished (results)
+  - Header with player avatars (active player highlighted with ring + scale)
+  - Turn indicator bar with player emoji, name, and current cell position
+  - **Always side-by-side layout** — `flex` with `flex-1 min-w-0` panels (board left, question/dice right)
+  - `h-screen overflow-hidden` root container for proper viewport-constrained independent scrolling
+  - Board panel: `overflow-y-auto overflow-x-hidden` for vertical-only scroll
+  - Right panel: `overflow-y-auto` for independent scroll of question content
+
+### Modified Files
+- **`src/config/gameRegistry.ts`** — Added Race to Finish entry:
+  - id: `race-to-finish`, name: `Race to Finish`, category: `quiz`, minCards: 4
+  - Lazy-loaded component pointing to `RaceToFinishMode`
+- **`src/styles/editor.css`** — Added `.race-question-content` and `.race-img-grid` CSS:
+  - `race-img-grid` uses `data-count` attribute for responsive image sizing
+  - 1 image: 180px max-height, full width
+  - 2 images: 140px max-height, side by side (50% each)
+  - 3 images: 110px max-height, three across (33% each)
+  - 4+ images: 90px max-height, 2 per row (50% each)
+
+### Game Flow
+1. Config screen → set players, path length, question types, answer direction
+2. Question phase → answer a study question (written/MC/TF)
+3. Correct → Rolling phase → click "Roll Dice" → animated dice roll
+4. Moving phase → token hops cell-by-cell along the path (spring animation)
+5. If landing on a shortcut cell → token warps forward
+6. If reaching the finish → game over, winner announced
+7. Wrong answer → turn skipped (multiplayer) or try again next round (solo)
+8. Repeat from step 2 with next player
+
+### UI/UX Improvements Made
+- **Smooth character movement:** Player tokens are absolutely positioned `motion.div` elements using Framer Motion spring physics, not inline DOM elements. They interpolate smoothly between board positions.
+- **Smart scrolling:** Board only scrolls vertically when the character moves near/past the viewport edge. Uses `isYInView()` check with 80px margin. No jarring jumps.
+- **Independent panel scrolling:** Board (left) and question panel (right) scroll independently. Achieved via `h-screen overflow-hidden` → `flex-1 min-h-0` → `flex-1 min-w-0 overflow-y-auto` CSS containment chain.
+- **Image layout optimization:** `RaceContent` component extracts images from HTML via regex, renders them in a flex grid with `data-count` attribute for CSS-driven responsive sizing. Minimizes vertical scrolling.
+- **Player token positioning:** Tokens sit on top edge of their cell (`node.y - NODE_R - 12`) to reduce confusion about which cell a player occupies.
+- **Vertical-only board scroll:** `overflow-x-hidden` on board container; canvas width matches container width.

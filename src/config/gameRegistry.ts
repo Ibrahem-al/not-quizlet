@@ -1,7 +1,7 @@
 import { lazy } from 'react';
 import type { ComponentType, LazyExoticComponent } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Blocks, FlipVertical2 } from 'lucide-react';
+import { Blocks, FlipVertical2, Flag } from 'lucide-react';
 import type { Card } from '../types';
 
 export type GameCategory = 'word' | 'memory' | 'speed' | 'puzzle' | 'quiz';
@@ -70,5 +70,16 @@ export const gameRegistry: GameDefinition[] = [
     tags: ['memory', 'matching', 'cards', 'flip', 'pairs', 'concentration'],
     minCards: 2,
     component: lazy(() => import('../components/modes/games/MemoryCardFlipMode')),
+  },
+  {
+    id: 'race-to-finish',
+    name: 'Race to Finish',
+    description: 'Answer questions, roll the dice, and race your character to the finish line! Supports 2-4 players.',
+    icon: Flag,
+    color: 'from-green-500 to-emerald-500',
+    category: 'quiz',
+    tags: ['race', 'board', 'multiplayer', 'dice', 'party'],
+    minCards: 4,
+    component: lazy(() => import('../components/modes/games/RaceToFinishMode')),
   },
 ];
