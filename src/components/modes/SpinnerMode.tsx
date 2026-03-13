@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, RotateCcw, Trophy } from 'lucide-react';
@@ -169,8 +170,8 @@ export function SpinnerMode({ cards, onExit }: SpinnerModeProps) {
     const cx = 200;
     const cy = 200;
     const r = 190;
-    const segments: JSX.Element[] = [];
-    const clipDefs: JSX.Element[] = [];
+    const segments: ReactElement[] = [];
+    const clipDefs: ReactElement[] = [];
 
     for (let i = 0; i < count; i++) {
       const startAngle = (i * 360) / count - 90;
@@ -214,11 +215,10 @@ export function SpinnerMode({ cards, onExit }: SpinnerModeProps) {
       if (hasImages) {
         // Calculate positions for multiple images along the segment's radial axis
         const spacing = thumbSize * 1.15;
-        const totalWidth = (images.length - 1) * spacing;
         // Perpendicular direction to the radial axis (for side-by-side layout)
         const perpAngle = midAngle + Math.PI / 2;
 
-        images.forEach((src, imgIdx) => {
+        images.forEach((_src, imgIdx) => {
           const clipId = `clip-img-${i}-${imgIdx}`;
           // Offset from center along perpendicular axis
           const offset = images.length === 1 ? 0 : (imgIdx - (images.length - 1) / 2) * spacing;
