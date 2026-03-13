@@ -34,7 +34,7 @@ function buildTiles(cards: Card[], pairCount: number): MatchTileData[] {
 
 export function MatchMode({ cards, onExit }: MatchModeProps) {
   const startTimeRef = useRef(Date.now());
-  const pairCount = Math.min(8, Math.floor(cards.length / 2));
+  const pairCount = Math.min(8, cards.length);
   const tiles = useMemo(() => buildTiles(cards, pairCount), [cards]);
   const [matchedPairs, setMatchedPairs] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState(true);
