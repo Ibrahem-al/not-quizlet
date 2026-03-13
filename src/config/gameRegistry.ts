@@ -1,7 +1,7 @@
 import { lazy } from 'react';
 import type { ComponentType, LazyExoticComponent } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Blocks } from 'lucide-react';
+import { Blocks, FlipVertical2 } from 'lucide-react';
 import type { Card } from '../types';
 
 export type GameCategory = 'word' | 'memory' | 'speed' | 'puzzle' | 'quiz';
@@ -59,5 +59,16 @@ export const gameRegistry: GameDefinition[] = [
     tags: ['tower', 'survival', 'lava', 'building', 'blocks'],
     minCards: 4,
     component: lazy(() => import('../components/modes/games/BlockBuilderMode')),
+  },
+  {
+    id: 'memory-card-flip',
+    name: 'Memory Card Flip',
+    description: 'Flip cards to find matching term-definition pairs. Clear the board in as few moves as possible!',
+    icon: FlipVertical2,
+    color: 'from-violet-500 to-purple-500',
+    category: 'memory',
+    tags: ['memory', 'matching', 'cards', 'flip', 'pairs', 'concentration'],
+    minCards: 2,
+    component: lazy(() => import('../components/modes/games/MemoryCardFlipMode')),
   },
 ];

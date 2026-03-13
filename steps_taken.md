@@ -449,3 +449,60 @@ A visual spinning-wheel study mode that appears as its own card in the "Choose a
 - Uses CSS `transition` for wheel spin (not requestAnimationFrame) for smooth GPU-accelerated rotation
 - SVG wheel renders entirely client-side with computed arc paths; no external dependencies
 - Flashcard overlay reuses the same `study-content` CSS class and `dangerouslySetInnerHTML` pattern as other modes
+
+---
+
+## Memory Card Flip Game
+
+### Overview
+The second game in the registry. A classic memory/concentration game where players flip face-down cards two at a time to find matching term-definition pairs. Cards that match vanish from the board; mismatches flip back over after a brief reveal. The goal is to clear the entire board in as few moves as possible. Similar to the existing MatchMode (drag-and-drop matching) but uses a click-to-flip mechanic with a grid of face-down cards.
+
+### New Files
+- **`src/components/modes/games/memory-card-flip/types.ts`** — Game types:
+  - `MemoryTile` — individual tile with id, cardId, content (HTML), and type (term/definition)
+  - `GamePhase` — `'playing' | 'complete'`
+  - `MemoryGameState` — runtime state (tiles, flippedIndices, matchedCardIds, moves, timing)
+  - `getGridCols()` — responsive grid column helper based on pair count
+
+- **`src/components/modes/games/memory-card-flip/useMemoryCardFlip.ts`** — Core game hook:
+  - Builds shuffled tile array from study cards (up to 8 pairs = 16 tiles)
+  - Flip logic: first click reveals tile, second click checks for match
+  - Match: same cardId but different type (term vs definition) → added to matchedCardIds
+  - Mismatch: both tiles shown for 800ms then flip back (locked during delay)
+  - Move counter increments on each pair attempt
+  - Auto-detects completion when all pairs matched
+  - Reset function to start fresh with re-shuffled tiles
+
+- **`src/components/modes/games/memory-card-flip/MemoryCard.tsx`** — Individual card component:
+  - CSS 3D flip animation using `perspective` and `rotateY` via Framer Motion
+  - Back face: violet-to-purple gradient with "?" symbol
+  - Front face: content with colored type badge (T=blue, D=emerald)
+  - Matched cards animate to scale 0.8 + opacity 0 and vanish
+  - Keyboard accessible (Enter/Space to flip)
+  - HTML content rendered via `dangerouslySetInnerHTML` with `study-content` class
+
+- **`src/components/modes/games/memory-card-flip/MemoryResults.tsx`** — Completion screen:
+  - Performance rating based on moves-to-pairs ratio (Perfect Memory → Keep Practicing)
+  - Stats grid: moves, time, pairs, accuracy percentage
+  - Confetti celebration on mount
+  - Play Again / Exit buttons
+
+- **`src/components/modes/games/MemoryCardFlipMode.tsx`** — Entry point:
+  - Header with game name, pair/move counter, exit button
+  - Renders responsive card grid during play, results screen on completion
+  - Minimum 2 cards required
+
+### Modified Files
+- **`src/config/gameRegistry.ts`**:
+  - Added `FlipVertical2` icon import from lucide-react
+  - Added Memory Card Flip entry: id `memory-card-flip`, category `memory`, minCards 2
+  - Color: `from-violet-500 to-purple-500`
+
+### Game Mechanics
+- **Grid:** Up to 8 pairs (16 tiles) from study cards, shuffled randomly
+- **Flipping:** Click a face-down card to reveal it. Click a second card to attempt a match.
+- **Matching:** Term + definition from the same study card = match. Both vanish with animation.
+- **Mismatch:** Both cards shown for 800ms, then flip back face-down. Input locked during reveal.
+- **Moves:** Each pair attempt counts as one move, regardless of match/mismatch.
+- **Completion:** All pairs matched → results screen with confetti, stats, and performance rating.
+- **Rating scale:** Perfect Memory (≤1.2× moves/pairs), Excellent (≤1.8×), Great (≤2.5×), Good (≤3.5×), Keep Practicing (>3.5×).
