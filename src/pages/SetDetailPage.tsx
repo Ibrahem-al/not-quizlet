@@ -16,6 +16,7 @@ import {
   Printer,
   Zap,
   Gamepad2,
+  Disc,
 } from 'lucide-react';
 import { useDebouncedCallback } from 'use-debounce';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -447,7 +448,7 @@ export function SetDetailPage() {
               </div>
             )}
             
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {modes.map(({ path, label, icon: Icon, description, color }) =>
                 canStartStudying ? (
                   <Link key={path} to={`/sets/${displaySet.id}/study/${path}`}>
@@ -475,6 +476,33 @@ export function SetDetailPage() {
                     <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">{description}</span>
                   </div>
                 )
+              )}
+
+              {/* Spinner — visual flashcard spinner */}
+              {canStartStudying ? (
+                <Link to={`/sets/${displaySet.id}/study/spinner`}>
+                  <Card variant="elevated" className="flex flex-col items-center gap-2 py-5 min-h-[120px] justify-center text-center group cursor-pointer relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500 to-violet-500 opacity-0 group-hover:opacity-5 transition-opacity duration-300" />
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-500 flex items-center justify-center shadow-lg mb-1">
+                      <Disc className="w-6 h-6 text-white shrink-0" />
+                    </div>
+                    <span className="text-sm font-semibold text-[var(--color-text)]">Spinner</span>
+                    <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">
+                      Spin the wheel, study the card it lands on.
+                    </span>
+                  </Card>
+                </Link>
+              ) : (
+                <div
+                  className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] opacity-50 cursor-not-allowed text-center min-h-[120px] justify-center"
+                  aria-disabled="true"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-[var(--color-text-muted)]/30 flex items-center justify-center mb-1">
+                    <Disc className="w-6 h-6 text-[var(--color-text-tertiary)] shrink-0" />
+                  </div>
+                  <span className="text-sm font-semibold text-[var(--color-text-secondary)]">Spinner</span>
+                  <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">Spin the wheel, study the card it lands on.</span>
+                </div>
               )}
 
               {/* Games — opens browser modal */}

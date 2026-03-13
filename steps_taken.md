@@ -319,3 +319,133 @@ Added a "Games" entry to the study modes grid on SetDetailPage. Unlike other mod
 - The registry pattern means no switch/case updates needed — just one array entry per game
 - Categories and tags support future filtering when the game count grows to hundreds
 - The modal design (vs. a separate page) keeps the user close to their set while browsing games
+
+---
+
+## Block Builder Game
+
+### Overview
+The first game in the registry. A survival/quiz hybrid where users answer study questions to build a tower of blocks while rising lava threatens to engulf their character. Players climb a mountain, and on winning (limited mode), a helicopter rescues them from the summit.
+
+### New Files
+- **`src/components/modes/games/block-builder/types.ts`** — All game types and constants:
+  - `Difficulty` (`easy` | `medium` | `hard`), `AnswerDirection`, `GamePhase`, `QuestionType`
+  - `BlockBuilderConfig` — pre-game options (answer direction, question types, count, difficulty, infinity mode)
+  - `BlockBuilderQuestion` — generated question with prompt, options, correct answer
+  - `GameState` — runtime state (blocks, score, lava height, streak, phase, timing)
+  - Constants: `BLOCK_HEIGHT_PX` (40), `INITIAL_BLOCKS` (3), `TOWER_CONTAINER_HEIGHT` (480)
+  - `DIFFICULTY_SPEEDS` — lava speed per difficulty (easy: constant 3px/s, medium: 2.5+0.08/s accel, hard: 3+0.15/s accel)
+  - `BLOCK_PENALTY` — blocks lost on wrong answer (easy: 0, medium: 1, hard: 2)
+
+- **`src/components/modes/games/block-builder/useBlockBuilderGame.ts`** — Core game hook:
+  - State machine: config → playing → won | lost
+  - Question generation reusing TestMode patterns (`selectCardsForQuestions`, `isImageOnly`, `getTextContent`, `hasTextContent`)
+  - `requestAnimationFrame` loop for lava rising (synced to React state via refs)
+  - Scoring: +100 base, +50 speed bonus (1 − timeTaken/15s), difficulty multiplier (1x/1.5x/2x), streak bonus (capped 2x)
+  - Infinity mode: generates new question batches when queue runs low (< 5 remaining)
+  - Exports: config, gameState, currentQuestion, questions, start/submit/reset functions
+
+- **`src/components/modes/games/block-builder/TowerView.tsx`** — Visual game rendering:
+  - Camera system that follows the character (spring-animated translateY, character at 60% viewport height)
+  - Mountain background with jagged SVG ridge silhouettes (`MountainRidge` component), rock shelves on alternating sides (`RockShelf` component)
+  - Sky gradient transitioning from dark space at peak through sunset tones to blue sky at base
+  - Snow zone near summit with gradient overlay and snowflake decorations
+  - Helicopter (🚁) at summit with gentle bobbing animation; flies away with character on win
+  - Lava with gradient body, wavy top edge (CSS keyframe), glow shadow, and animated bubbles
+  - Colored block stack with AnimatePresence (scale in/out), HSL color rotation
+  - Character (🧱👷) bounces on correct, shakes on wrong, flies off with helicopter on win
+  - HUD: score, streak counter, difficulty badge, altitude percentage
+  - Altitude progress bar (right edge) with animated fill and character dot
+  - Rocky ground base with rock/plant emoji decorations
+
+- **`src/components/modes/games/block-builder/QuestionPanel.tsx`** — Question interface:
+  - Renders one question at a time with `dangerouslySetInnerHTML` + `study-content` class
+  - Written: Input + Enter submit, uses `gradeWrittenAnswer()` for typo tolerance
+  - Multiple choice: 4 option buttons
+  - True/False: True/False buttons
+  - Brief feedback flash (green/red ring, ~500ms) then auto-advance
+  - AnimatePresence for question transitions
+
+- **`src/components/modes/games/block-builder/BlockBuilderConfig.tsx`** — Pre-game config screen:
+  - Answer direction toggle (Definition / Term / Both)
+  - Question types checkboxes (Written, Multiple Choice, True/False)
+  - Question count stepper + preset buttons (hidden when infinity mode is on)
+  - Difficulty selector (Easy/Medium/Hard color-coded toggle buttons with descriptions)
+  - Infinity mode toggle switch
+  - Start / Exit buttons
+
+- **`src/components/modes/games/block-builder/BlockBuilderResults.tsx`** — End screens:
+  - Win: helicopter emoji (🚁) with hovering animation, "Rescued!" title, "The helicopter got you to safety!" subtitle, confetti particles
+  - Lose: volcano emoji (🌋), "Game Over" (or "Nice Run!" for infinity mode)
+  - Score display, stats grid (accuracy, time, correct, wrong, max tower, best streak)
+  - Play Again / Exit buttons
+
+- **`src/components/modes/games/BlockBuilderMode.tsx`** — Entry point:
+  - Phase router: config → playing → won/lost (results)
+  - Desktop: side-by-side grid `grid-cols-[2fr_3fr]` (tower left, questions right)
+  - Mobile: stacked layout
+  - Passes all game state + config to child components
+
+### Modified Files
+- **`src/config/gameRegistry.ts`** — Added Block Builder entry:
+  - id: `block-builder`, name: `Block Builder`, category: `quiz`, minCards: 4
+  - icon: `Blocks` (lucide-react), color: `from-orange-500 to-red-500`
+  - Lazy-loaded component pointing to `BlockBuilderMode`
+
+### Game Mechanics
+- **Blocks:** Start with 3. Correct = +1, Wrong = −0/−1/−2 (by difficulty). Each block 40px tall, HSL color rotation.
+- **Lava:** Rises from bottom via RAF loop. Easy: constant 3px/s. Medium/Hard: accelerating.
+- **Win condition (limited mode):** Answer all questions before lava reaches character. Helicopter rescue animation plays.
+- **Lose condition:** Lava height ≥ tower height (blocks × 40px).
+- **Infinity mode:** No question limit, no summit/helicopter. Play for high score until lava catches you.
+- **Scoring:** Base 100 + speed bonus (up to 50) × difficulty multiplier × streak bonus.
+
+---
+
+## Spinner Mode
+
+### Overview
+A visual spinning-wheel study mode that appears as its own card in the "Choose a study mode" grid on SetDetailPage, positioned between the core modes and Games. Instead of linearly going through flashcards, users spin a colorful wheel containing all their terms. The wheel lands on a random term, the user views its flashcard (term → flip → definition), then that term is removed from the wheel. This continues until all terms have been reviewed.
+
+### New Files
+- **`src/components/modes/SpinnerMode.tsx`** — Full spinner implementation:
+  - SVG-based spinning wheel with colored segments (12-color palette cycling)
+  - Each segment displays the term's plain text (truncated to 18 chars)
+  - Font size adapts to segment count (12px for ≤6, 10px for ≤12, 8px for 12+)
+  - CSS transition-based spin animation (3.5s cubic-bezier easing for realistic deceleration)
+  - Pointer triangle indicator at top of wheel
+  - Center hub with primary-color dot
+  - "SPIN!" button triggers 5–7 full rotations landing on a random segment
+  - On landing: flashcard overlay appears with 3D flip animation (term → definition)
+  - "Got it — Remove & Continue" button on definition side removes the card and returns to wheel
+  - Completion screen with trophy icon and "Spin Again" / "Back to Set" buttons
+  - Progress counter in header (X / Y done)
+  - Reset button to restart with all cards
+  - Escape key: dismisses flashcard if open, otherwise shows exit confirmation
+  - Exit confirmation modal (reuses ConfirmModal)
+
+### Modified Files
+- **`src/pages/SetDetailPage.tsx`**:
+  - Added `Disc` icon import from lucide-react
+  - Added Spinner card in study modes grid (fuchsia-to-violet gradient, Disc icon)
+  - Spinner card is a `<Link>` to `/sets/{id}/study/spinner`
+  - Grid updated from `sm:grid-cols-4` to `sm:grid-cols-3 lg:grid-cols-6` to fit 6 items
+- **`src/pages/StudyPage.tsx`**:
+  - Added `SpinnerMode` import
+  - Added `'spinner'` to Mode type union
+  - Added `case 'spinner'` in switch to render `<SpinnerMode>`
+
+### How It Works
+1. User clicks "Spinner" on SetDetailPage → navigates to `/sets/{id}/study/spinner`
+2. SpinnerMode renders with all cards loaded into wheel segments
+3. User clicks "SPIN!" → wheel rotates 5–7 full turns + lands on random segment
+4. After 3.5s animation, flashcard overlay appears showing the term
+5. User taps to flip → sees definition
+6. User clicks "Got it" → card removed from wheel, returns to spinner
+7. Repeat until all cards reviewed → completion screen
+
+### Architecture Decisions
+- Built as a first-class study mode (like Flashcards/Learn/Match/Test), not a game in the registry, since it's a visual flashcard reviewer rather than a scored game
+- Uses CSS `transition` for wheel spin (not requestAnimationFrame) for smooth GPU-accelerated rotation
+- SVG wheel renders entirely client-side with computed arc paths; no external dependencies
+- Flashcard overlay reuses the same `study-content` CSS class and `dangerouslySetInnerHTML` pattern as other modes
