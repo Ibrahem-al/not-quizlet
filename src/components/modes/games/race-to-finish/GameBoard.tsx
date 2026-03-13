@@ -416,7 +416,7 @@ export function GameBoard({
         })}
 
         {/* ── Floating player tokens — smoothly animated between nodes ── */}
-        {players.map((player, pIdx) => {
+        {players.map((player) => {
           const visualPos = getVisualPosition(player);
           if (visualPos < 0) return null; // waiting at start — handled below
           const node = nodes[visualPos];
