@@ -14,6 +14,7 @@ import { useEditorStore } from '../../stores/editorStore';
 import { useValidationStore } from '../../stores/validationStore';
 import type { Card } from '../../types';
 import { FloatingToolbar } from './FloatingToolbar';
+import { DiacriticsToolbar } from './DiacriticsToolbar';
 import { MediaDropzone } from './MediaDropzone';
 import { ImageSearchModal } from './ImageSearchModal';
 import '../../styles/editor.css';
@@ -217,6 +218,7 @@ export function CardEditor({ card, index, isActive, isDuplicateTerm, onFocus, on
             </div>
             <FloatingToolbar editor={termEditor} />
             <EditorContent editor={termEditor} />
+            <DiacriticsToolbar editor={termEditor} />
           </MediaDropzone>
         </Panel>
         <Separator className="studio-sash" />
@@ -246,6 +248,7 @@ export function CardEditor({ card, index, isActive, isDuplicateTerm, onFocus, on
             </div>
             <FloatingToolbar editor={defEditor} />
             <EditorContent editor={defEditor} />
+            <DiacriticsToolbar editor={defEditor} />
           </MediaDropzone>
         </Panel>
       </Group>

@@ -633,3 +633,16 @@ The third game in the registry. A board game where players answer study question
 - **Image layout optimization:** `RaceContent` component extracts images from HTML via regex, renders them in a flex grid with `data-count` attribute for CSS-driven responsive sizing. Minimizes vertical scrolling.
 - **Player token positioning:** Tokens sit on top edge of their cell (`node.y - NODE_R - 12`) to reduce confusion about which cell a player occupies.
 - **Vertical-only board scroll:** `overflow-x-hidden` on board container; canvas width matches container width.
+
+### Path Non-Overlap Fix
+- **File:** `src/components/modes/games/race-to-finish/GameBoard.tsx`
+- **Problem:** The procedurally generated path frequently crossed over itself — road segments (SVG bezier curves) would intersect when the path wound back upward, creating visual confusion where the player couldn't tell which direction the road was going.
+- **Fix:** Added segment intersection and proximity detection to the path generator:
+  - `segmentsIntersect()` — cross-product math to detect if a new edge would cross any previous edge
+  - `pointToSegmentDistSq()` — ensures new nodes and segment midpoints aren't too close to any old segment (using `ROAD_BUFFER = ROAD_WIDTH + NODE_R`)
+  - `isValid()` combines three checks: node clear, segment doesn't cross, segment not too close
+  - Candidate angle system: generates 13 candidate directions (preferred + 12 evenly-spaced fallbacks). Picks the first that passes all checks, naturally routing around already-used areas.
+  - Last resort fallback pushes outward/downward when all 13 angles fail in tight spaces.
+
+### Build Fix
+- **Unused variable `pIdx` in GameBoard.tsx:** Vercel's `npm run build` runs `tsc -b` which treats unused variables as errors (exit code 2). Removed the unused `pIdx` parameter from `players.map((player, pIdx) => ...)` → `players.map((player) => ...)`.

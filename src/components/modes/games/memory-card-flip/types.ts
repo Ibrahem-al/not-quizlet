@@ -5,7 +5,7 @@ export interface MemoryTile {
   type: 'term' | 'definition';
 }
 
-export type GamePhase = 'playing' | 'complete';
+export type GamePhase = 'setup' | 'playing' | 'complete';
 
 export interface MemoryGameState {
   phase: GamePhase;

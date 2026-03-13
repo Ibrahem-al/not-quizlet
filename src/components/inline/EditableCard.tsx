@@ -15,6 +15,7 @@ import { getAIGenerator } from '../../lib/ai';
 import { stripHtml, type ValidationError } from '../../lib/validation';
 import type { Card } from '../../types';
 import { ImageSearchModal } from '../editor/ImageSearchModal';
+import { DiacriticsToolbar } from '../editor/DiacriticsToolbar';
 import { sanitizeSearchQuery } from '../../lib/imageSearch';
 import '../../styles/editor.css';
 
@@ -220,6 +221,7 @@ export function EditableCard({
             </div>
             <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${termErrors.length > 0 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]`}>
               <EditorContent editor={termEditor} />
+              <DiacriticsToolbar editor={termEditor} />
             </div>
           </div>
           <div
@@ -258,6 +260,7 @@ export function EditableCard({
             )}
             <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${defErrors.length > 0 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]`}>
               <EditorContent editor={defEditor} />
+              <DiacriticsToolbar editor={defEditor} />
             </div>
           </div>
         </div>

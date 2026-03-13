@@ -33,32 +33,181 @@ const ROAD_WIDTH = 18;
 
 interface PathNode { x: number; y: number }
 
+/** Test if segment (a→b) intersects segment (c→d). Uses road thickness as buffer. */
+function segmentsIntersect(
+  ax: number, ay: number, bx: number, by: number,
+  cx: number, cy: number, dx: number, dy: number,
+  buffer: number,
+): boolean {
+  // Fast bounding-box rejection
+  const minABx = Math.min(ax, bx) - buffer, maxABx = Math.max(ax, bx) + buffer;
+  const minABy = Math.min(ay, by) - buffer, maxABy = Math.max(ay, by) + buffer;
+  const minCDx = Math.min(cx, dx) - buffer, maxCDx = Math.max(cx, dx) + buffer;
+  const minCDy = Math.min(cy, dy) - buffer, maxCDy = Math.max(cy, dy) + buffer;
+  if (maxABx < minCDx || maxCDx < minABx || maxABy < minCDy || maxCDy < minABy) return false;
+
+  // Cross-product based intersection
+  const d1x = bx - ax, d1y = by - ay;
+  const d2x = dx - cx, d2y = dy - cy;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-8) return false; // parallel
+
+  const t = ((cx - ax) * d2y - (cy - ay) * d2x) / denom;
+  const u = ((cx - ax) * d1y - (cy - ay) * d1x) / denom;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return false;
+
+  // Intersection exists — also check if they're close enough to visually overlap
+  // (the parametric test already confirms crossing, so return true)
+  return true;
+}
+
+/** Minimum distance from point (px,py) to segment (ax,ay)→(bx,by) */
+function pointToSegmentDistSq(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-8) { const ex = px - ax, ey = py - ay; return ex * ex + ey * ey; }
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  const projX = ax + t * dx, projY = ay + t * dy;
+  const ex = px - projX, ey = py - projY;
+  return ex * ex + ey * ey;
+}
+
 function generatePath(count: number, seed: number, canvasW: number): PathNode[] {
   const rng = mulberry32(seed);
   const nodes: PathNode[] = [];
-  const maxCols = Math.max(3, Math.floor((canvasW - PADDING * 2) / SPACING));
+  const leftBound = PADDING + NODE_R;
+  const rightBound = canvasW - PADDING - NODE_R;
+  const usableW = rightBound - leftBound;
+  const MIN_NODE_DIST_SQ = (NODE_DIAMETER * 1.3) ** 2;
+  const ROAD_BUFFER = ROAD_WIDTH + NODE_R; // how close a new segment can be to old segments
+  const ROAD_BUFFER_SQ = ROAD_BUFFER * ROAD_BUFFER;
+  const STEP = SPACING * 1.15;
 
-  let x = PADDING + NODE_R;
+  // Check node doesn't overlap any existing node
+  const nodesClear = (cx: number, cy: number): boolean => {
+    for (let n = 0; n < nodes.length; n++) {
+      const dx = cx - nodes[n].x;
+      const dy = cy - nodes[n].y;
+      if (dx * dx + dy * dy < MIN_NODE_DIST_SQ) return false;
+    }
+    return true;
+  };
+
+  // Check that the new segment (from last node to candidate) doesn't cross or
+  // run too close to any previous segment (skip the immediately prior segment)
+  const segmentClear = (cx: number, cy: number): boolean => {
+    if (nodes.length < 2) return true;
+    const last = nodes[nodes.length - 1];
+    // Check against all prior segments except the one ending at `last`
+    for (let s = 0; s < nodes.length - 2; s++) {
+      const a = nodes[s], b = nodes[s + 1];
+      // Segment crossing check
+      if (segmentsIntersect(last.x, last.y, cx, cy, a.x, a.y, b.x, b.y, ROAD_WIDTH)) {
+        return false;
+      }
+      // Proximity check: new segment midpoint shouldn't be too close to old segments
+      const mx = (last.x + cx) / 2, my = (last.y + cy) / 2;
+      if (pointToSegmentDistSq(mx, my, a.x, a.y, b.x, b.y) < ROAD_BUFFER_SQ) {
+        return false;
+      }
+      // Also check candidate point itself isn't too close to old segments
+      if (pointToSegmentDistSq(cx, cy, a.x, a.y, b.x, b.y) < ROAD_BUFFER_SQ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const inBounds = (cx: number, cy: number): boolean =>
+    cx >= leftBound && cx <= rightBound && cy >= PADDING + NODE_R;
+
+  const isValid = (cx: number, cy: number): boolean =>
+    inBounds(cx, cy) && nodesClear(cx, cy) && segmentClear(cx, cy);
+
+  let x = leftBound + rng() * usableW * 0.4;
   let y = PADDING + NODE_R;
-  let dir = 1;
+  let dir = rng() > 0.5 ? 1 : -1;
+  let heading = dir > 0 ? 0 : Math.PI;
+  let downRun = 0;
+  let upRun = 0;
 
   for (let i = 0; i < count; i++) {
-    const jitterY = (rng() - 0.5) * 24;
-    const jitterX = (rng() - 0.5) * 14;
-    nodes.push({ x: x + jitterX, y: y + jitterY });
-
+    nodes.push({ x, y });
     if (i === count - 1) break;
 
-    const nextX = x + dir * SPACING;
-    const leftBound = PADDING + NODE_R;
-    const rightBound = PADDING + NODE_R + (maxCols - 1) * SPACING;
+    // Vertical tendency based on streaks
+    let vBias = 0.15;
+    if (downRun >= 2) vBias = -0.5 - rng() * 0.3;
+    if (downRun >= 4) vBias = -0.85;
+    if (upRun >= 3) vBias = 0.4 + rng() * 0.3;
+    if (upRun >= 5) vBias = 0.75;
 
-    if (nextX < leftBound || nextX > rightBound) {
-      y += SPACING * (0.7 + rng() * 0.6);
-      dir *= -1;
+    // Generate candidate angles to try (preferred first, then fallbacks)
+    const candidates: number[] = [];
+
+    const roll = rng();
+    if (roll < 0.25) {
+      candidates.push((dir > 0 ? 0 : Math.PI) + vBias * 0.6 + (rng() - 0.5) * 0.4);
+    } else if (roll < 0.50) {
+      const base = vBias < 0
+        ? (dir > 0 ? -0.5 - rng() * 0.4 : Math.PI + 0.5 + rng() * 0.4)
+        : (dir > 0 ? 0.4 + rng() * 0.3 : Math.PI - 0.4 - rng() * 0.3);
+      candidates.push(base);
+    } else if (roll < 0.70) {
+      candidates.push(vBias >= 0 ? Math.PI / 2 + (rng() - 0.5) * 0.5 : -Math.PI / 2 + (rng() - 0.5) * 0.5);
+    } else if (roll < 0.85) {
+      candidates.push(heading + (rng() - 0.5) * 1.2 + vBias * 0.4);
     } else {
-      x = nextX;
+      // Switchback
+      candidates.push(vBias >= 0 ? -Math.PI / 3 + (rng() - 0.5) * 0.6 : Math.PI / 3 + (rng() - 0.5) * 0.6);
     }
+
+    // Add fallback angles spread around the circle
+    for (let a = 0; a < 12; a++) {
+      candidates.push(candidates[0] + (a + 1) * (Math.PI * 2 / 12) * (a % 2 === 0 ? 1 : -1));
+    }
+
+    let placed = false;
+    for (const angle of candidates) {
+      const stepLen = STEP * (0.85 + rng() * 0.35);
+      let nx = x + Math.cos(angle) * stepLen;
+      let ny = y + Math.sin(angle) * stepLen;
+
+      // Clamp
+      if (nx < leftBound) { nx = leftBound + rng() * 10; }
+      if (nx > rightBound) { nx = rightBound - rng() * 10; }
+      if (ny < PADDING + NODE_R) { ny = PADDING + NODE_R + rng() * 10; }
+
+      if (isValid(nx, ny)) {
+        // Update direction based on where we actually went
+        if (nx > x + 20) dir = 1;
+        else if (nx < x - 20) dir = -1;
+
+        heading = Math.atan2(ny - y, nx - x);
+
+        if (ny > y + 5) { downRun++; upRun = 0; }
+        else if (ny < y - 5) { upRun++; downRun = 0; }
+        else { downRun = 0; upRun = 0; }
+
+        x = nx;
+        y = ny;
+        placed = true;
+        break;
+      }
+    }
+
+    // Last resort: push further out in a safe direction
+    if (!placed) {
+      const safeAngle = heading + (rng() - 0.5) * 0.5;
+      x += Math.cos(safeAngle) * STEP * 1.5;
+      y += Math.abs(Math.sin(safeAngle)) * STEP + STEP * 0.5;
+      if (x < leftBound) x = leftBound + rng() * 20;
+      if (x > rightBound) x = rightBound - rng() * 20;
+      downRun++;
+      upRun = 0;
+    }
+
+    if (rng() < 0.12) dir *= -1;
   }
   return nodes;
 }
@@ -133,7 +282,46 @@ export function GameBoard({
 
   const roadPath = useMemo(() => buildSmoothPath(nodes), [nodes]);
 
-  // ── Smooth vertical scroll only when character is near/past viewport edge ──
+  // ── Continuous scroll that follows the animated player smoothly ──
+  // We track the target scroll Y and lerp towards it each frame
+  const scrollTargetRef = useRef<number | null>(null);
+  const scrollRafRef = useRef<number | null>(null);
+
+  // Start/update the scroll tracking loop
+  const startScrollTracking = useCallback(() => {
+    if (scrollRafRef.current !== null) return; // already running
+
+    const tick = () => {
+      const el = scrollRef.current;
+      const target = scrollTargetRef.current;
+      if (!el || target === null) {
+        scrollRafRef.current = null;
+        return;
+      }
+
+      const diff = target - el.scrollTop;
+      if (Math.abs(diff) < 1) {
+        el.scrollTop = target;
+        scrollRafRef.current = null;
+        scrollTargetRef.current = null;
+        return;
+      }
+
+      // Lerp: move 12% of remaining distance each frame (~smooth follow)
+      el.scrollTop += diff * 0.12;
+      scrollRafRef.current = requestAnimationFrame(tick);
+    };
+
+    scrollRafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  // Clean up RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    };
+  }, []);
+
   const scrollToNodeIfNeeded = useCallback(
     (nodeIdx: number) => {
       const el = scrollRef.current;
@@ -142,13 +330,11 @@ export function GameBoard({
       if (!node) return;
 
       if (!isYInView(el, node.y, SCROLL_MARGIN)) {
-        el.scrollTo({
-          top: Math.max(0, node.y - el.clientHeight / 2),
-          behavior: 'smooth',
-        });
+        scrollTargetRef.current = Math.max(0, node.y - el.clientHeight / 2);
+        startScrollTracking();
       }
     },
-    [nodes],
+    [nodes, startScrollTracking],
   );
 
   // ── Step-by-step hop animation ──
@@ -236,14 +422,11 @@ export function GameBoard({
     if (phase === 'moving') return; // animation handles its own scrolling
     const cp = players[currentPlayerIndex];
     if (!cp || cp.position < 0) return;
-    const el = scrollRef.current;
     const node = nodes[cp.position];
-    if (!el || !node) return;
-    el.scrollTo({
-      top: Math.max(0, node.y - el.clientHeight / 2),
-      behavior: 'smooth',
-    });
-  }, [currentPlayerIndex, phase, players, nodes]);
+    if (!node) return;
+    scrollTargetRef.current = Math.max(0, node.y - (scrollRef.current?.clientHeight ?? 0) / 2);
+    startScrollTracking();
+  }, [currentPlayerIndex, phase, players, nodes, startScrollTracking]);
 
   // Get the visual position for a player (animated or real)
   const getVisualPosition = useCallback(

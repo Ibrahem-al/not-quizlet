@@ -14,18 +14,33 @@ function buildTiles(cards: Card[], pairCount: number): MemoryTile[] {
 }
 
 export function useMemoryCardFlip(cards: Card[]) {
-  const pairCount = Math.min(8, cards.length);
+  const maxPairs = cards.length;
+  const [pairCount, setPairCount] = useState(() => Math.min(6, cards.length));
   const lockRef = useRef(false);
 
   const [gameState, setGameState] = useState<MemoryGameState>(() => ({
-    phase: 'playing',
-    tiles: buildTiles(cards, pairCount),
+    phase: 'setup',
+    tiles: [],
     flippedIndices: [],
     matchedCardIds: new Set(),
     moves: 0,
     startTime: Date.now(),
     endTime: null,
   }));
+
+  const startGame = useCallback((selectedPairCount: number) => {
+    setPairCount(selectedPairCount);
+    lockRef.current = false;
+    setGameState({
+      phase: 'playing',
+      tiles: buildTiles(cards, selectedPairCount),
+      flippedIndices: [],
+      matchedCardIds: new Set(),
+      moves: 0,
+      startTime: Date.now(),
+      endTime: null,
+    });
+  }, [cards]);
 
   const flipTile = useCallback((index: number) => {
     if (lockRef.current) return;
@@ -87,15 +102,15 @@ export function useMemoryCardFlip(cards: Card[]) {
   const resetGame = useCallback(() => {
     lockRef.current = false;
     setGameState({
-      phase: 'playing',
-      tiles: buildTiles(cards, pairCount),
+      phase: 'setup',
+      tiles: [],
       flippedIndices: [],
       matchedCardIds: new Set(),
       moves: 0,
       startTime: Date.now(),
       endTime: null,
     });
-  }, [cards, pairCount]);
+  }, []);
 
-  return { gameState, pairCount, flipTile, resetGame };
+  return { gameState, pairCount, maxPairs, flipTile, resetGame, startGame };
 }
