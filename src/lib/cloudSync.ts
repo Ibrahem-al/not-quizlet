@@ -88,7 +88,11 @@ export async function fetchSetById(setId: string): Promise<StudySet | null> {
     .select('*')
     .eq('id', setId)
     .maybeSingle();
-  if (error || !data) return null;
+  if (error) {
+    console.warn('[cloudSync] fetchSetById failed:', error.message);
+    return null;
+  }
+  if (!data) return null;
   return fromRow(data as StudySetRow);
 }
 

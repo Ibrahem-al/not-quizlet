@@ -47,6 +47,9 @@ StudyFlow is a Quizlet-like study app built with:
 | `src/components/sharing/ShareDialog.tsx` | Sharing settings modal |
 | `src/components/sharing/ShareButton.tsx` | Share button component |
 | `src/components/inline/EditableCard.tsx` | Inline card editor with TipTap |
+| `src/lib/diacritics.ts` | Script-aware diacritics config registry (Arabic harakat, extensible) |
+| `src/hooks/useScriptDetection.ts` | Hook to detect script/language from TipTap editor content |
+| `src/components/editor/DiacriticsToolbar.tsx` | Auto-showing diacritics toolbar for Arabic (and future languages) |
 | `src/styles/editor.css` | TipTap + study mode CSS (`.study-content` rules) |
 | `src/styles/globals.css` | Design system CSS variables |
 | `supabase/migrations/` | All SQL migrations (001-005) |
@@ -646,3 +649,41 @@ The third game in the registry. A board game where players answer study question
 
 ### Build Fix
 - **Unused variable `pIdx` in GameBoard.tsx:** Vercel's `npm run build` runs `tsc -b` which treats unused variables as errors (exit code 2). Removed the unused `pIdx` parameter from `players.map((player, pIdx) => ...)` → `players.map((player) => ...)`.
+
+---
+
+## Arabic Diacritics (Harakat) Toolbar
+
+### What It Does
+Automatically detects when a user is typing Arabic text in the card editor and shows a harakat toolbar below the text box. The toolbar provides clickable buttons for common Arabic diacritical marks so users can easily add tashkeel to their flashcard content. The system is built to be extensible — adding support for other languages (e.g., French accents) requires only adding a config object, no component changes.
+
+### How It Works
+1. **Script detection** — A custom hook (`useScriptDetection`) subscribes to TipTap editor updates and checks the current paragraph's text against Unicode ranges. Arabic is detected via `/[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/`. A 50ms debounce prevents flicker during rapid typing.
+2. **Toolbar rendering** — When Arabic is detected, a `DiacriticsToolbar` component animates in (Framer Motion slide) below the `<EditorContent>`. When the user switches to non-Arabic text, it animates out.
+3. **Character insertion** — Buttons use `onMouseDown` + `e.preventDefault()` to keep the TipTap editor focused, then call `editor.chain().focus().insertContent(char).run()` to insert the combining character at the cursor position.
+4. **Extensibility** — All language configs live in a `SCRIPT_CONFIGS` array in `diacritics.ts`. Each config has a `detectPattern` (RegExp) and `groups` (button groups). Adding a new language is one config object.
+
+### Diacritics Available
+- **Short Vowels:** Fatha (َ), Kasra (ِ), Damma (ُ), Sukun (ْ)
+- **Shaddah:** Shaddah (ّ)
+- **Tanwin:** Fathatan (ً), Kasratan (ٍ), Dammatan (ٌ)
+
+Button labels display each diacritic on a tatweel base character (e.g., `ـَ`) for visual clarity.
+
+### New Files
+| Path | Purpose |
+|------|---------|
+| `src/lib/diacritics.ts` | Script config registry — interfaces (`ScriptToolbarConfig`, `DiacriticGroup`, `DiacriticButton`), Arabic config with harakat groups, `detectScript()` function, extensible `SCRIPT_CONFIGS` array |
+| `src/hooks/useScriptDetection.ts` | Custom hook — subscribes to TipTap `update` and `selectionUpdate` events, extracts current paragraph text, runs `detectScript()` with 50ms debounce, returns matching `ScriptToolbarConfig` or `null` |
+| `src/components/editor/DiacriticsToolbar.tsx` | Toolbar component — self-manages visibility via `useScriptDetection`, renders grouped buttons with dividers, uses `AnimatePresence` for enter/exit animation |
+
+### Modified Files
+- **`src/components/editor/CardEditor.tsx`** — Imported `DiacriticsToolbar`, added `<DiacriticsToolbar editor={termEditor} />` and `<DiacriticsToolbar editor={defEditor} />` after each `<EditorContent>` in the studio mode bilateral editor.
+- **`src/components/inline/EditableCard.tsx`** — Same integration for inline (Notion-style) card editor — toolbar appears inside each term/definition input box when Arabic is detected.
+- **`src/styles/editor.css`** — Added `.diacritics-toolbar` (flex-wrap bar with subtle primary-tinted background), `.diacritics-toolbar-group`, `.diacritics-toolbar-divider`, `.diacritics-btn` (32px square buttons with hover/active states).
+
+### Key Design Decisions
+- **Hook-based detection (not TipTap extension):** The toolbar is a React component rendered outside ProseMirror's DOM, so React state is needed for show/hide. A hook is simpler and shareable across both editor components.
+- **`onMouseDown` + `preventDefault()` on buttons:** Prevents the browser from moving focus away from the editor when clicking a diacritic button. Without this, the cursor position would be lost and insertion would fail.
+- **Tatweel base for labels:** Arabic combining marks are invisible in isolation, so each button label shows the diacritic on a tatweel character (`ـ`) for readability.
+- **Per-paragraph detection:** Only the current paragraph's text is checked, not the full document. This means the toolbar appears/disappears based on where the cursor is, not what's elsewhere in the card.

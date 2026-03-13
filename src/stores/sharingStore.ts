@@ -89,6 +89,18 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
 
       if (error) throw error;
 
+      // Ensure the item's sharing_mode allows shared access
+      // (private mode blocks all shared reads via RLS)
+      const table = itemType === 'set' ? 'study_sets' : 'folders';
+      const { data: item } = await supabase
+        .from(table)
+        .select('sharing_mode')
+        .eq('id', itemId)
+        .single();
+      if (item && item.sharing_mode === 'private') {
+        await get().updateSharingMode(itemType, itemId, 'restricted');
+      }
+
       // Refresh permissions
       await get().getItemPermissions(itemType, itemId);
     } catch (err) {
@@ -389,15 +401,19 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
       // Create a persistent sharing_permissions entry for the accepting user
       // Skip if user is the link creator (they already own the item)
       if (linkData?.created_by && linkData.created_by !== userData.user.id) {
-        await supabase.from('sharing_permissions').insert({
+        const { error: insertError } = await supabase.from('sharing_permissions').insert({
           item_type: shareData.item_type,
           item_id: shareData.item_id,
           shared_with_user_id: userData.user.id,
+          shared_with_email: userData.user.email,
           permission_level: shareData.permission_level,
           shared_by_user_id: linkData.created_by,
         });
         // Unique constraint (item_type, item_id, shared_with_user_id) will
         // harmlessly reject duplicates if user clicks the link again
+        if (insertError && !insertError.message?.includes('duplicate')) {
+          console.warn('[sharingStore] Failed to create sharing_permissions entry:', insertError);
+        }
       }
 
       return {
@@ -423,6 +439,14 @@ export const useSharingStore = create<SharingState & SharingActions>((set, get) 
       if (!user.data.user?.id || !user.data.user?.email) {
         set({ pendingInvites: [] });
         return;
+      }
+
+      // Claim any email-based invites that haven't been linked to this user yet
+      // This resolves shared_with_email -> shared_with_user_id so RLS policies work
+      try {
+        await supabase.rpc('claim_email_invites');
+      } catch {
+        // RPC may not exist yet if migration 010 not applied; continue gracefully
       }
 
       // Query by both user_id and email to catch email-based invites

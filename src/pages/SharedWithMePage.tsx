@@ -39,12 +39,11 @@ export default function SharedWithMePage() {
     loadPendingInvites();
   }, [loadPendingInvites]);
 
-  // Transform invites to shared items (would need to fetch item details in real app)
+  // Transform invites to shared items — loadPendingInvites already fetches names
   const sharedItems: SharedItem[] = useMemo(() => {
     return pendingInvites.map((invite) => ({
       ...invite,
-      // These would come from a join query in real implementation
-      itemName: invite.itemType === 'set' ? t('untitledSet') : t('untitledFolder'),
+      itemName: invite.itemName || (invite.itemType === 'set' ? t('untitledSet') : t('untitledFolder')),
       sharedByName: invite.sharedByEmail || t('unknownUser'),
     }));
   }, [pendingInvites, t]);
