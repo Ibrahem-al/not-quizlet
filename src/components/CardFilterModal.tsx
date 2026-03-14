@@ -174,7 +174,7 @@ export function CardFilterModal({ isOpen, onClose, cards, selectedIds, onApply }
             {/* Card list */}
             <div className="p-5 pt-3 overflow-y-auto flex-1">
               <ul className="space-y-1.5">
-                {filteredCards.map((card, i) => {
+                {filteredCards.map((card) => {
                   const isSelected = selected.has(card.id);
                   const termText = getTextContent(card.term);
                   const defText = getTextContent(card.definition);

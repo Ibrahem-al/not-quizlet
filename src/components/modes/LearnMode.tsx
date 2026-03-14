@@ -5,7 +5,7 @@ import { Input } from '../ui';
 import { useSpacedRep } from '../../hooks/useSpacedRep';
 import { shuffle } from '../../lib/algorithms';
 import { getTextContent } from '../../lib/contentHelpers';
-import { buildEquivalenceGroups, getEquivalentAnswers, getEquivalentAnswersHtml, getWrongOptionPool, getCorrectAnswersNormSet, isDistinctAnswer, findCorrectOptionIndices, gradeWrittenAnswerMulti, buildMultiAnswerOptions } from '../../lib/equivalence';
+import { buildEquivalenceGroups, getEquivalentAnswers, getEquivalentAnswersHtml, getCorrectAnswersNormSet, isDistinctAnswer, findCorrectOptionIndices, gradeWrittenAnswerMulti, buildMultiAnswerOptions } from '../../lib/equivalence';
 import type { EquivalenceGroups } from '../../lib/equivalence';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { Card } from '../../types';

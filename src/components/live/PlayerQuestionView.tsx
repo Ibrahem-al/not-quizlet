@@ -9,7 +9,7 @@ const OPTION_COLORS = [
 ];
 
 interface PlayerQuestionViewProps {
-  question: Omit<LiveQuestion, 'correctOptionIndex'>;
+  question: Omit<LiveQuestion, 'correctOptionIndex' | 'correctOptionIndices'>;
   myAnswer: { chosenOption: number } | null;
   timerMs: number;
   onAnswer: (index: number) => void;

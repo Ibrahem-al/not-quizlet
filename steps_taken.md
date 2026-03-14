@@ -1218,3 +1218,24 @@ Added a card filter that lets users select which cards to include when studying.
 - **`src/components/CardFilterModal.tsx`** *(new)* — Card filter modal component
 - **`src/pages/SetDetailPage.tsx`** — Added filter button + modal integration
 - **`src/pages/StudyPage.tsx`** — Applied card filter before passing cards to modes
+
+---
+
+## Step: Build Fixes (TS6133 / TS2345 / TS2741)
+
+### What Changed
+Fixed 5 TypeScript strict-mode errors that caused the Vercel production build to fail.
+
+### Errors Fixed
+1. **`src/components/CardFilterModal.tsx`** — Removed unused loop variable `i` in `.map((card, i) =>` (TS6133).
+2. **`src/components/modes/LearnMode.tsx`** — Removed unused import `getWrongOptionPool` (TS6133).
+3. **`src/components/modes/MatchMode.tsx`** — `buildTiles()` was creating objects missing the required `tileIndex` property. Added `tileIndex` to each tile and assigned correct indices after shuffle (TS2345).
+4. **`src/lib/printables.ts`** — Removed unused import `findCorrectOptionIndices` (TS6133).
+5. **`src/components/live/PlayerQuestionView.tsx`** — The `question` prop type was `Omit<LiveQuestion, 'correctOptionIndex'>` but the store provides `Omit<LiveQuestion, 'correctOptionIndex' | 'correctOptionIndices'>`. Updated the prop type to also omit `correctOptionIndices` (TS2741).
+
+### Files Changed
+- **`src/components/CardFilterModal.tsx`** — Removed unused `i` variable
+- **`src/components/modes/LearnMode.tsx`** — Removed unused `getWrongOptionPool` import
+- **`src/components/modes/MatchMode.tsx`** — Added `tileIndex` property to tile construction
+- **`src/lib/printables.ts`** — Removed unused `findCorrectOptionIndices` import
+- **`src/components/live/PlayerQuestionView.tsx`** — Aligned `question` prop Omit type with store type

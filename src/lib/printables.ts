@@ -1,6 +1,6 @@
 import type { Card } from '../types';
 import { shuffle } from './algorithms';
-import { buildEquivalenceGroups, getWrongOptionPool, getCorrectAnswersNormSet, isDistinctAnswer, getEquivalentAnswers, findCorrectOptionIndices, buildMultiAnswerOptions } from './equivalence';
+import { buildEquivalenceGroups, getWrongOptionPool, getCorrectAnswersNormSet, isDistinctAnswer, getEquivalentAnswers, buildMultiAnswerOptions } from './equivalence';
 import { normalizeContent } from './contentHelpers';
 
 export type AnswerDirection = 'term-to-definition' | 'definition-to-term' | 'both';

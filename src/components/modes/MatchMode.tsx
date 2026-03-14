@@ -27,9 +27,10 @@ function buildTiles(cards: Card[], pairCount: number): MatchTileData[] {
   const selected = shuffle(cards).slice(0, pairCount);
   const tiles: MatchTileData[] = [];
   selected.forEach((card) => {
-    tiles.push({ cardId: card.id, text: card.term, type: 'term' });
-    tiles.push({ cardId: card.id, text: card.definition, type: 'definition' });
+    tiles.push({ cardId: card.id, text: card.term, type: 'term', tileIndex: 0 });
+    tiles.push({ cardId: card.id, text: card.definition, type: 'definition', tileIndex: 0 });
   });
+  tiles.forEach((t, idx) => { t.tileIndex = idx; });
   return shuffle(tiles);
 }
 
