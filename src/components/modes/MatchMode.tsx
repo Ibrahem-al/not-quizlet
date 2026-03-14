@@ -5,6 +5,7 @@ import { Button } from '../ui';
 import { MatchTile, type MatchTileData } from '../study/MatchTile';
 import { Timer } from '../study/Timer';
 import { shuffle } from '../../lib/algorithms';
+import { buildEquivalenceGroups, areMatchableByContent } from '../../lib/equivalence';
 import type { Card } from '../../types';
 
 const spring = { type: 'spring' as const, stiffness: 300, damping: 30 };
@@ -36,18 +37,27 @@ export function MatchMode({ cards, onExit }: MatchModeProps) {
   const startTimeRef = useRef(Date.now());
   const pairCount = Math.min(8, cards.length);
   const tiles = useMemo(() => buildTiles(cards, pairCount), [cards]);
-  const [matchedPairs, setMatchedPairs] = useState<Set<string>>(new Set());
+  const groups = useMemo(() => buildEquivalenceGroups(cards), [cards]);
+  const [matchedTiles, setMatchedTiles] = useState<Set<number>>(new Set());
   const [running, setRunning] = useState(true);
   const [done, setDone] = useState(false);
   const [finalTimeMs, setFinalTimeMs] = useState<number | null>(null);
 
   const handleDrop = (dragged: MatchTileData, target: MatchTileData) => {
     if (dragged.type === target.type) return;
-    if (dragged.cardId !== target.cardId) return;
-    setMatchedPairs((prev) => new Set(prev).add(dragged.cardId));
+    // Determine which is term, which is definition
+    const termTile = dragged.type === 'term' ? dragged : target;
+    const defTile = dragged.type === 'definition' ? dragged : target;
+    if (!areMatchableByContent(termTile.text, defTile.text, groups)) return;
+    setMatchedTiles((prev) => {
+      const next = new Set(prev);
+      next.add(dragged.tileIndex);
+      next.add(target.tileIndex);
+      return next;
+    });
   };
 
-  const matchedCount = matchedPairs.size;
+  const matchedCount = Math.floor(matchedTiles.size / 2);
   useEffect(() => {
     if (matchedCount === pairCount && pairCount > 0) {
       setFinalTimeMs(Date.now() - startTimeRef.current);
@@ -103,7 +113,8 @@ export function MatchMode({ cards, onExit }: MatchModeProps) {
                 cardId={tile.cardId}
                 text={tile.text}
                 type={tile.type}
-                matched={matchedPairs.has(tile.cardId)}
+                tileIndex={i}
+                matched={matchedTiles.has(i)}
                 onDrop={handleDrop}
               />
             ))}

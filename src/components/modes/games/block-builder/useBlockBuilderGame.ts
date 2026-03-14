@@ -1,5 +1,8 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { shuffle, gradeWrittenAnswer } from '../../../../lib/algorithms';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { shuffle } from '../../../../lib/algorithms';
+import { getTextContent, isImageOnly, hasTextContent, selectCardsForQuestions } from '../../../../lib/contentHelpers';
+import { buildEquivalenceGroups, getEquivalentAnswers, getWrongOptionPool, getCorrectAnswersNormSet, isDistinctAnswer, findCorrectOptionIndices, gradeWrittenAnswerMulti, buildMultiAnswerOptions } from '../../../../lib/equivalence';
+import type { EquivalenceGroups } from '../../../../lib/equivalence';
 import type { Card } from '../../../../types';
 import type {
   BlockBuilderConfig,
@@ -14,38 +17,12 @@ import {
   DIFFICULTY_SPEEDS,
 } from './types';
 
-/* ── helpers (same logic as TestMode) ── */
-
-function isImageOnly(content: string): boolean {
-  if (!content) return false;
-  const withoutImages = content.replace(/<img[^>]*>/gi, '');
-  const textContent = withoutImages.replace(/<[^>]*>/g, '').trim();
-  return textContent === '' && content.includes('<img');
-}
-
-function getTextContent(content: string): string {
-  return content.replace(/<[^>]*>/g, '').trim();
-}
-
-function hasTextContent(content: string): boolean {
-  return getTextContent(content).length > 0;
-}
-
-function selectCardsForQuestions(cards: Card[], count: number): Card[] {
-  if (count <= cards.length) return shuffle(cards).slice(0, count);
-  const result: Card[] = [];
-  const full = Math.floor(count / cards.length);
-  const rem = count % cards.length;
-  for (let i = 0; i < full; i++) result.push(...cards);
-  result.push(...shuffle([...cards]).slice(0, rem));
-  return shuffle(result);
-}
-
 /* ── question generation ── */
 
 function generateQuestions(
   cards: Card[],
   config: BlockBuilderConfig,
+  groups: EquivalenceGroups,
 ): BlockBuilderQuestion[] {
   const types: QuestionType[] = [];
   if (config.questionTypes.written) types.push('written');
@@ -77,15 +54,22 @@ function generateQuestions(
 
     const type = available[Math.floor(Math.random() * available.length)];
     const prompt = answerWith === 'definition' ? card.term : card.definition;
+    const equivalentAnswers = getEquivalentAnswers(card, answerWith, groups);
 
     if (type === 'multiple') {
-      const others = cards.filter((c) => c.id !== card.id);
-      const wrong = shuffle(others)
-        .slice(0, 3)
-        .map((c) => (answerWith === 'term' ? c.term : c.definition));
-      const correct = answerWith === 'term' ? card.term : card.definition;
-      const options = shuffle([correct, ...wrong]);
-      questions.push({ card, type, prompt, options, correctOption: options.indexOf(correct), answerWith });
+      let options: string[];
+      if (config.multiAnswerMC) {
+        options = buildMultiAnswerOptions(card, cards, answerWith, groups);
+      } else {
+        const wrongPool = getWrongOptionPool(card, cards, answerWith, groups);
+        const wrong = shuffle(wrongPool)
+          .slice(0, 3)
+          .map((c) => (answerWith === 'term' ? c.term : c.definition));
+        const correct = answerWith === 'term' ? card.term : card.definition;
+        options = shuffle([correct, ...wrong]);
+      }
+      const correctOptionIndices = findCorrectOptionIndices(options, card, answerWith, groups);
+      questions.push({ card, type, prompt, options, correctOption: correctOptionIndices[0] ?? 0, correctOptionIndices, equivalentAnswers, answerWith });
     } else if (type === 'truefalse') {
       const isTrue = Math.random() > 0.5;
       let shown: string;
@@ -93,14 +77,25 @@ function generateQuestions(
       if (isTrue) {
         shown = answer;
       } else if (cards.length > 1) {
-        const other = shuffle(cards.filter((c) => c.id !== card.id))[0];
-        shown = answerWith === 'term' ? other.term : other.definition;
+        const correctNorm = getCorrectAnswersNormSet(card, answerWith, groups);
+        const distinctOthers = cards.filter((c) => {
+          const content = answerWith === 'term' ? c.term : c.definition;
+          return isDistinctAnswer(content, correctNorm);
+        });
+        if (distinctOthers.length > 0) {
+          const other = shuffle(distinctOthers)[0];
+          shown = answerWith === 'term' ? other.term : other.definition;
+        } else {
+          shown = answer;
+          questions.push({ card, type, prompt, options: [shown], isTrue: true, equivalentAnswers, answerWith });
+          return;
+        }
       } else {
         shown = answer;
       }
-      questions.push({ card, type, prompt, options: [shown], isTrue, answerWith });
+      questions.push({ card, type, prompt, options: [shown], isTrue, equivalentAnswers, answerWith });
     } else {
-      questions.push({ card, type, prompt, answerWith });
+      questions.push({ card, type, prompt, equivalentAnswers, answerWith });
     }
   });
 
@@ -110,12 +105,14 @@ function generateQuestions(
 /* ── hook ── */
 
 export function useBlockBuilderGame(cards: Card[]) {
+  const groups = useMemo(() => buildEquivalenceGroups(cards), [cards]);
   const [config, setConfig] = useState<BlockBuilderConfig>({
     answerDirection: 'term-to-definition',
     questionTypes: { written: true, multiple: true, truefalse: true },
     questionCount: Math.min(20, cards.length) || 10,
     difficulty: 'easy',
     infinityMode: false,
+    multiAnswerMC: false,
   });
 
   const [gameState, setGameState] = useState<GameState>({
@@ -172,7 +169,7 @@ export function useBlockBuilderGame(cards: Card[]) {
 
   /* start game */
   const startGame = useCallback(() => {
-    const q = generateQuestions(cards, config);
+    const q = generateQuestions(cards, config, groups);
     setQuestions(q);
     lavaRef.current = 0;
     startTimeRef.current = performance.now();
@@ -196,7 +193,7 @@ export function useBlockBuilderGame(cards: Card[]) {
     });
 
     rafRef.current = requestAnimationFrame(tick);
-  }, [cards, config, tick]);
+  }, [cards, config, groups, tick]);
 
   /* cleanup */
   useEffect(() => {
@@ -213,10 +210,10 @@ export function useBlockBuilderGame(cards: Card[]) {
       // if we have fewer than 5 questions remaining, generate more
       const remaining = prev.length - gameState.currentQuestionIndex;
       if (remaining > 5) return prev;
-      const more = generateQuestions(cards, config);
+      const more = generateQuestions(cards, config, groups);
       return [...prev, ...more];
     });
-  }, [cards, config, gameState.currentQuestionIndex]);
+  }, [cards, config, groups, gameState.currentQuestionIndex]);
 
   /* submit answer */
   const submitAnswer = useCallback(
@@ -278,8 +275,10 @@ export function useBlockBuilderGame(cards: Card[]) {
     (input: string) => {
       const q = questions[gameState.currentQuestionIndex];
       if (!q) return;
-      const correct = q.answerWith === 'term' ? q.card.term : q.card.definition;
-      const ok = gradeWrittenAnswer(input, getTextContent(correct));
+      const answers = q.equivalentAnswers ?? [getTextContent(
+        q.answerWith === 'term' ? q.card.term : q.card.definition
+      )];
+      const ok = gradeWrittenAnswerMulti(answers, input);
       submitAnswer(ok);
     },
     [questions, gameState.currentQuestionIndex, submitAnswer],
@@ -289,7 +288,8 @@ export function useBlockBuilderGame(cards: Card[]) {
     (optionIndex: number) => {
       const q = questions[gameState.currentQuestionIndex];
       if (!q || q.type !== 'multiple') return;
-      submitAnswer(optionIndex === q.correctOption);
+      const indices = q.correctOptionIndices ?? (q.correctOption !== undefined ? [q.correctOption] : []);
+      submitAnswer(indices.includes(optionIndex));
     },
     [questions, gameState.currentQuestionIndex, submitAnswer],
   );

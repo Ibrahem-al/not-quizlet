@@ -110,7 +110,7 @@ export default function MemoryCardFlipMode({ cards, onExit }: GameModeProps) {
       <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)]">
         <span className="text-sm font-semibold text-[var(--color-text)]">Memory Card Flip</span>
         <span className="font-mono text-sm text-[var(--color-text-secondary)]">
-          {gameState.matchedCardIds.size} / {pairCount} matches &middot; {gameState.moves} moves
+          {Math.floor(gameState.matchedTileIndices.size / 2)} / {pairCount} matches &middot; {gameState.moves} moves
         </span>
         <Button variant="ghost" size="sm" onClick={onExit}>Exit</Button>
       </header>
@@ -132,7 +132,7 @@ export default function MemoryCardFlipMode({ cards, onExit }: GameModeProps) {
                 content={tile.content}
                 type={tile.type}
                 isFlipped={gameState.flippedIndices.includes(i)}
-                isMatched={gameState.matchedCardIds.has(tile.cardId)}
+                isMatched={gameState.matchedTileIndices.has(i)}
                 onClick={() => flipTile(i)}
               />
             ))}

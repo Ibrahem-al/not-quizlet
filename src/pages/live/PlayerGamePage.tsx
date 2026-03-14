@@ -21,6 +21,7 @@ export function PlayerGamePage() {
   const myAnswer = useLiveGameStore((s) => s.myAnswer);
   const timerRemainingMs = useLiveGameStore((s) => s.timerRemainingMs);
   const correctOptionIndex = useLiveGameStore((s) => s.correctOptionIndex);
+  const correctOptionIndices = useLiveGameStore((s) => s.correctOptionIndices);
   const submitAnswer = useLiveGameStore((s) => s.submitAnswer);
   const questions = useLiveGameStore((s) => s.questions);
 
@@ -67,10 +68,11 @@ export function PlayerGamePage() {
       {status === 'reveal' && currentQuestion && correctOptionIndex !== null && (
         <motion.div key="reveal" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
           <PlayerRevealView
-            isCorrect={myAnswer?.chosenOption === correctOptionIndex}
+            isCorrect={myAnswer != null && (correctOptionIndices ?? [correctOptionIndex]).includes(myAnswer.chosenOption)}
             pointsEarned={0}
             myChosenOption={myAnswer?.chosenOption ?? null}
             correctOptionIndex={correctOptionIndex}
+            correctOptionIndices={correctOptionIndices ?? undefined}
             options={currentQuestion.options}
           />
         </motion.div>

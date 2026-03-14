@@ -33,7 +33,7 @@
   min-height: 120px;
   padding: 12px 16px;
   color: var(--color-text);
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   line-height: 1.6;
 }
 
@@ -311,7 +311,7 @@
   min-height: 22px;
   padding: 0;
   color: var(--color-text);
-  font-size: 0.9375rem;
+  font-size: 1.0625rem;
 }
 .ProseMirror.inline-editor:focus {
   outline: none;

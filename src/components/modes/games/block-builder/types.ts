@@ -15,6 +15,7 @@ export interface BlockBuilderConfig {
   questionCount: number;
   difficulty: Difficulty;
   infinityMode: boolean;
+  multiAnswerMC: boolean;
 }
 
 export interface BlockBuilderQuestion {
@@ -23,6 +24,8 @@ export interface BlockBuilderQuestion {
   prompt: string;
   options?: string[];
   correctOption?: number;
+  correctOptionIndices?: number[];
+  equivalentAnswers?: string[];
   isTrue?: boolean;
   answerWith: 'term' | 'definition';
 }

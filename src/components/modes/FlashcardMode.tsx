@@ -24,10 +24,12 @@ export function FlashcardMode({ cards, setId, onExit }: FlashcardModeProps) {
   const progress = cards.length ? `${index + 1} / ${cards.length}` : '0 / 0';
 
   const handleRate = useCallback(
-    async (quality: number) => {
+    (quality: number) => {
       if (!currentCard) return;
-      const start = Date.now();
-      await recordReview(currentCard, quality, Date.now() - start, 'flashcards');
+      // Fire-and-forget: record review in background, advance card immediately
+      recordReview(currentCard, quality, 0, 'flashcards').catch((err) =>
+        console.error('Failed to record review:', err)
+      );
       if (index < cards.length - 1) setIndex((i) => i + 1);
       else onExit();
     },

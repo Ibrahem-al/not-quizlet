@@ -52,7 +52,7 @@ export function EditorPage() {
   const cardErrors = useValidationStore((s) => s.cardErrors);
 
   useEffect(() => {
-    runValidation(set ?? null);
+    runValidation(set ?? null, 'save');
   }, [set?.id, set?.cards, runValidation, set]);
 
   const handleSaveAndExit = useCallback(async () => {
@@ -61,10 +61,10 @@ export function EditorPage() {
     setIsSaving(true);
 
     // Run validation first
-    runValidation(set);
+    runValidation(set, 'save');
 
     if (!canSave()) {
-      showToast('error', 'Fix validation errors before saving (e.g. empty terms).', 4000);
+      showToast('error', 'Fix validation errors before saving (e.g. too many characters).', 4000);
       setIsSaving(false);
       return;
     }

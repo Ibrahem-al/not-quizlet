@@ -117,7 +117,7 @@ export function RaceQuestionPanel({
               <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
                 {question.answerWith === 'definition' ? 'Term' : 'Definition'}
               </p>
-              <RaceContent html={question.prompt} className="text-lg font-medium text-[var(--color-text)]" />
+              <RaceContent html={question.prompt} className="text-xl font-medium text-[var(--color-text)]" />
             </div>
 
             {/* Divider */}
@@ -177,7 +177,7 @@ export function RaceQuestionPanel({
                   <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
                     Proposed {question.answerWith === 'definition' ? 'Definition' : 'Term'}
                   </p>
-                  <RaceContent html={question.options[0]} className="text-base text-[var(--color-text)]" />
+                  <RaceContent html={question.options[0]} className="text-lg text-[var(--color-text)]" />
                 </div>
                 <p className="text-center text-sm font-medium text-[var(--color-text)]">
                   Is this correct?

@@ -79,7 +79,7 @@ export function QuestionPanel({
                 {question.answerWith === 'definition' ? 'Term' : 'Definition'}
               </p>
               <div
-                className="text-lg font-medium text-[var(--color-text)] study-content"
+                className="text-xl font-medium text-[var(--color-text)] study-content"
                 dangerouslySetInnerHTML={{ __html: question.prompt }}
               />
             </div>
@@ -142,7 +142,7 @@ export function QuestionPanel({
                     Proposed {question.answerWith === 'definition' ? 'Definition' : 'Term'}
                   </p>
                   <div
-                    className="text-base text-[var(--color-text)] study-content"
+                    className="text-lg text-[var(--color-text)] study-content"
                     dangerouslySetInnerHTML={{ __html: question.options[0] }}
                   />
                 </div>

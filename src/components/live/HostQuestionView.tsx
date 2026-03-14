@@ -59,7 +59,7 @@ export function HostQuestionView({
             />
           )}
           <div
-            className="text-2xl font-bold text-[var(--color-text)]"
+            className="text-3xl font-bold text-[var(--color-text)]"
             dangerouslySetInnerHTML={{ __html: question.term }}
           />
         </div>
@@ -76,7 +76,7 @@ export function HostQuestionView({
               >
                 <span className="font-black text-lg w-7 shrink-0">{col.label}</span>
                 <div
-                  className="flex-1 text-sm font-medium line-clamp-2"
+                  className="flex-1 text-base font-medium line-clamp-2"
                   dangerouslySetInnerHTML={{ __html: opt }}
                 />
                 {count > 0 && (

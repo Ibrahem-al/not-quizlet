@@ -37,7 +37,7 @@ export function HostRevealView({
         {/* Question */}
         <div className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 text-center shadow">
           <div
-            className="text-xl font-bold text-[var(--color-text)]"
+            className="text-2xl font-bold text-[var(--color-text)]"
             dangerouslySetInnerHTML={{ __html: question.term }}
           />
         </div>
@@ -45,7 +45,7 @@ export function HostRevealView({
         {/* Options with correct/wrong highlight */}
         <div className="grid grid-cols-2 gap-3 w-full">
           {question.options.map((opt, i) => {
-            const isCorrect = i === question.correctOptionIndex;
+            const isCorrect = (question.correctOptionIndices ?? [question.correctOptionIndex]).includes(i);
             return (
               <div
                 key={i}
@@ -55,7 +55,7 @@ export function HostRevealView({
               >
                 <span className="font-black text-base w-6 shrink-0">{OPTION_LABELS[i]}</span>
                 <div
-                  className="flex-1 text-sm font-medium line-clamp-2"
+                  className="flex-1 text-base font-medium line-clamp-2"
                   dangerouslySetInnerHTML={{ __html: opt }}
                 />
                 {isCorrect && <CheckCircle className="w-5 h-5 shrink-0" />}

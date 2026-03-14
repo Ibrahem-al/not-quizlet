@@ -3,7 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 // jsPDF is dynamically imported in exportPdf to avoid bundling ~290KB upfront
 import { Button } from '../ui';
 import { Input } from '../ui';
-import { shuffle, gradeWrittenAnswer } from '../../lib/algorithms';
+import { shuffle } from '../../lib/algorithms';
+import { getTextContent, isImageOnly, hasTextContent, selectCardsForQuestions } from '../../lib/contentHelpers';
+import { buildEquivalenceGroups, getEquivalentAnswers, getWrongOptionPool, getCorrectAnswersNormSet, isDistinctAnswer, findCorrectOptionIndices, gradeWrittenAnswerMulti, buildMultiAnswerOptions } from '../../lib/equivalence';
+import type { EquivalenceGroups } from '../../lib/equivalence';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { Card } from '../../types';
 import { InputDiacriticsToolbar } from '../editor/InputDiacriticsToolbar';
@@ -20,6 +23,7 @@ interface TestConfig {
   truefalse: boolean;
   questionCount: number;
   answerDirection: AnswerDirection;
+  multiAnswerMC: boolean;
 }
 
 interface TestQuestion {
@@ -27,6 +31,8 @@ interface TestQuestion {
   type: TestQuestionType;
   options?: string[];
   correctOption?: number;
+  correctOptionIndices?: number[];
+  equivalentAnswers?: string[];
   isTrue?: boolean;
   answerWith: 'term' | 'definition';
 }
@@ -38,51 +44,7 @@ interface TestModeProps {
   onStudyMissed?: (missedCardIds: string[]) => void;
 }
 
-/**
- * Check if a string contains only an image (no meaningful text content).
- */
-function isImageOnly(content: string): boolean {
-  if (!content) return false;
-  // Remove img tags and check if there's any text left
-  const withoutImages = content.replace(/<img[^>]*>/gi, '');
-  const textContent = withoutImages.replace(/<[^>]*>/g, '').trim();
-  return textContent === '' && content.includes('<img');
-}
-
-/**
- * Get the text content for grading (remove HTML tags).
- */
-function getTextContent(content: string): string {
-  return content.replace(/<[^>]*>/g, '').trim();
-}
-
-/**
- * Check if a card has any text content suitable for written answers.
- */
-function hasTextContent(content: string): boolean {
-  const textContent = content.replace(/<[^>]*>/g, '').trim();
-  return textContent.length > 0;
-}
-
-/**
- * Select cards for the requested question count, repeating evenly when
- * questionCount exceeds the number of available cards.
- */
-function selectCardsForQuestions(cards: Card[], questionCount: number): Card[] {
-  if (questionCount <= cards.length) {
-    return shuffle(cards).slice(0, questionCount);
-  }
-  const result: Card[] = [];
-  const fullRounds = Math.floor(questionCount / cards.length);
-  const remainder = questionCount % cards.length;
-  for (let i = 0; i < fullRounds; i++) {
-    result.push(...cards);
-  }
-  result.push(...shuffle([...cards]).slice(0, remainder));
-  return shuffle(result);
-}
-
-function generateQuestions(cards: Card[], config: TestConfig): TestQuestion[] {
+function generateQuestions(cards: Card[], config: TestConfig, groups: EquivalenceGroups): TestQuestion[] {
   const types: TestQuestionType[] = [];
   if (config.written) types.push('written');
   if (config.multiple) types.push('multiple');
@@ -95,31 +57,24 @@ function generateQuestions(cards: Card[], config: TestConfig): TestQuestion[] {
   const selectedCards = selectCardsForQuestions(cards, config.questionCount);
 
   selectedCards.forEach((card) => {
-    // Check what content each side has
     const isTermImageOnly = isImageOnly(card.term);
     const isDefImageOnly = isImageOnly(card.definition);
     const termHasText = hasTextContent(card.term);
     const defHasText = hasTextContent(card.definition);
 
-    // Determine answer direction based on content
     let answerWith: 'term' | 'definition';
 
-    // Smart logic for handling pictures vs text
     if (isTermImageOnly && isDefImageOnly) {
-      // Both sides are pictures only - skip written questions
       if (config.answerDirection === 'both') {
         answerWith = Math.random() > 0.5 ? 'definition' : 'term';
       } else {
         answerWith = config.answerDirection === 'term-to-definition' ? 'definition' : 'term';
       }
     } else if (isTermImageOnly && defHasText) {
-      // Term is picture-only, definition has text -> force show term pic, write definition
       answerWith = 'definition';
     } else if (isDefImageOnly && termHasText) {
-      // Definition is picture-only, term has text -> force show definition pic, write term
       answerWith = 'term';
     } else {
-      // Both have text (may also have pictures) -> use user's preference or random for "both"
       if (config.answerDirection === 'both') {
         answerWith = Math.random() > 0.5 ? 'definition' : 'term';
       } else {
@@ -127,28 +82,36 @@ function generateQuestions(cards: Card[], config: TestConfig): TestQuestion[] {
       }
     }
 
-    // For written questions: skip if both sides are image-only
     let availableTypes = types;
     if (isTermImageOnly && isDefImageOnly) {
       availableTypes = types.filter(t => t !== 'written');
-      if (availableTypes.length === 0) return; // Skip this card entirely if no valid question types
+      if (availableTypes.length === 0) return;
     }
 
     const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
 
+    const equivalentAnswers = getEquivalentAnswers(card, answerWith, groups);
+
     if (type === 'multiple') {
-      const others = cards.filter((c) => c.id !== card.id);
-      // Use the same side for wrong answers as the answer side
-      const wrong = shuffle(others).slice(0, 3).map((c) =>
-        answerWith === 'term' ? c.term : c.definition
-      );
-      const correct = answerWith === 'term' ? card.term : card.definition;
-      const options = shuffle([correct, ...wrong]);
+      let options: string[];
+      if (config.multiAnswerMC) {
+        options = buildMultiAnswerOptions(card, cards, answerWith, groups);
+      } else {
+        const wrongPool = getWrongOptionPool(card, cards, answerWith, groups);
+        const wrong = shuffle(wrongPool).slice(0, 3).map((c) =>
+          answerWith === 'term' ? c.term : c.definition
+        );
+        const correct = answerWith === 'term' ? card.term : card.definition;
+        options = shuffle([correct, ...wrong]);
+      }
+      const correctOptionIndices = findCorrectOptionIndices(options, card, answerWith, groups);
       questions.push({
         card,
         type,
         options,
-        correctOption: options.indexOf(correct),
+        correctOption: correctOptionIndices[0] ?? 0,
+        correctOptionIndices,
+        equivalentAnswers,
         answerWith,
       });
     } else if (type === 'truefalse') {
@@ -159,20 +122,25 @@ function generateQuestions(cards: Card[], config: TestConfig): TestQuestion[] {
       if (isTrue) {
         shownContent = answerContent;
       } else if (cards.length > 1) {
-        const other = shuffle(cards.filter((c) => c.id !== card.id))[0];
-        shownContent = answerWith === 'term' ? other.term : other.definition;
+        const correctNorm = getCorrectAnswersNormSet(card, answerWith, groups);
+        const distinctOthers = cards.filter((c) => {
+          const content = answerWith === 'term' ? c.term : c.definition;
+          return isDistinctAnswer(content, correctNorm);
+        });
+        if (distinctOthers.length > 0) {
+          const other = shuffle(distinctOthers)[0];
+          shownContent = answerWith === 'term' ? other.term : other.definition;
+        } else {
+          shownContent = answerContent;
+          questions.push({ card, type, options: [shownContent], isTrue: true, equivalentAnswers, answerWith });
+          return;
+        }
       } else {
         shownContent = answerContent;
       }
-      questions.push({
-        card,
-        type,
-        options: [shownContent],
-        isTrue,
-        answerWith,
-      });
+      questions.push({ card, type, options: [shownContent], isTrue, equivalentAnswers, answerWith });
     } else {
-      questions.push({ card, type, answerWith });
+      questions.push({ card, type, equivalentAnswers, answerWith });
     }
   });
 
@@ -186,6 +154,7 @@ export function TestMode({
   onStudyMissed,
 }: TestModeProps) {
   const { t } = useTranslation();
+  const groups = useMemo(() => buildEquivalenceGroups(cards), [cards]);
   const [config, setConfig] = useState<TestConfig>({
     written: true,
     multiple: true,
@@ -193,6 +162,7 @@ export function TestMode({
     truefalse: true,
     questionCount: Math.min(20, cards.length) || 10,
     answerDirection: 'term-to-definition',
+    multiAnswerMC: false,
   });
   const [started, setStarted] = useState(false);
   const [questions, setQuestions] = useState<TestQuestion[]>([]);
@@ -201,44 +171,70 @@ export function TestMode({
   const [writtenInput, setWrittenInput] = useState('');
   const writtenInputRef = useRef<HTMLInputElement>(null);
   const [showResults, setShowResults] = useState(false);
+  const [selectedMcIndices, setSelectedMcIndices] = useState<Set<number>>(new Set());
 
   const total = questions.length;
   const current = questions[index];
   const correctCount = Array.from(answers.values()).filter(Boolean).length;
   const accuracy = total > 0 ? Math.round((correctCount / total) * 100) : 0;
+  const isMultiCorrect = (current?.correctOptionIndices?.length ?? 0) > 1;
 
   const startTest = useCallback(() => {
-    const generated = generateQuestions(cards, config);
+    const generated = generateQuestions(cards, config, groups);
     setQuestions(generated);
     setStarted(true);
     setIndex(0);
     setAnswers(new Map());
     setShowResults(false);
-  }, [cards, config]);
+    setSelectedMcIndices(new Set());
+  }, [cards, config, groups]);
 
   const submitWritten = useCallback(() => {
     if (!current) return;
-    // Grade based on what the user should answer with
-    const correctContent = current.answerWith === 'term' 
-      ? current.card.term 
-      : current.card.definition;
-    const ok = gradeWrittenAnswer(writtenInput, getTextContent(correctContent));
+    const answers_ = current.equivalentAnswers ?? [getTextContent(
+      current.answerWith === 'term' ? current.card.term : current.card.definition
+    )];
+    const ok = gradeWrittenAnswerMulti(answers_, writtenInput);
     setAnswers((prev) => new Map(prev).set(index, ok));
     setWrittenInput('');
     if (index < total - 1) setIndex((i) => i + 1);
     else setShowResults(true);
   }, [current, writtenInput, index, total]);
 
+  const advanceQuestion = useCallback(() => {
+    setSelectedMcIndices(new Set());
+    if (index < total - 1) setIndex((i) => i + 1);
+    else setShowResults(true);
+  }, [index, total]);
+
   const submitMultiple = useCallback(
     (optionIndex: number) => {
       if (!current || current.type !== 'multiple') return;
-      const ok = optionIndex === current.correctOption;
+      const indices = current.correctOptionIndices ?? (current.correctOption !== undefined ? [current.correctOption] : []);
+      const ok = indices.includes(optionIndex);
       setAnswers((prev) => new Map(prev).set(index, ok));
-      if (index < total - 1) setIndex((i) => i + 1);
-      else setShowResults(true);
+      advanceQuestion();
     },
-    [current, index, total]
+    [current, index, advanceQuestion]
   );
+
+  const toggleMcSelection = useCallback((i: number) => {
+    setSelectedMcIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }, []);
+
+  const submitMultiSelect = useCallback(() => {
+    if (!current || current.type !== 'multiple') return;
+    const correctIndices = new Set(current.correctOptionIndices ?? []);
+    const ok = selectedMcIndices.size === correctIndices.size &&
+      [...selectedMcIndices].every((i) => correctIndices.has(i));
+    setAnswers((prev) => new Map(prev).set(index, ok));
+    advanceQuestion();
+  }, [current, selectedMcIndices, index, advanceQuestion]);
 
   const submitTrueFalse = useCallback(
     (value: boolean) => {
@@ -455,6 +451,21 @@ export function TestMode({
             />
             <span className="text-[var(--color-text)]">True / False</span>
           </label>
+          {config.multiple && (
+            <label className="flex items-center gap-2 ml-4">
+              <input
+                type="checkbox"
+                checked={config.multiAnswerMC}
+                onChange={(e) => setConfig((c) => ({ ...c, multiAnswerMC: e.target.checked }))}
+              />
+              <span className="text-[var(--color-text)]">Multi-answer MC</span>
+            </label>
+          )}
+          {config.multiAnswerMC && config.multiple && (
+            <p className="text-xs text-[var(--color-text-secondary)] ml-4">
+              MC questions may have multiple correct answers. You must select all correct options.
+            </p>
+          )}
 
           {/* Question count — presets + input */}
           <div className="pt-2 space-y-3">
@@ -560,7 +571,7 @@ export function TestMode({
                   {current.answerWith === 'definition' ? 'Term' : 'Definition'}
                 </p>
                 <div
-                  className="text-lg font-medium text-[var(--color-text)] study-content"
+                  className="text-xl font-medium text-[var(--color-text)] study-content"
                   dangerouslySetInnerHTML={{ __html: questionPrompt }}
                 />
               </div>
@@ -574,7 +585,7 @@ export function TestMode({
                     {current.answerWith === 'definition' ? 'Term' : 'Definition'}
                   </p>
                   <div 
-                    className="text-lg font-medium text-[var(--color-text)] study-content"
+                    className="text-xl font-medium text-[var(--color-text)] study-content"
                     dangerouslySetInnerHTML={{ __html: questionPrompt }}
                   />
                 </div>
@@ -612,21 +623,48 @@ export function TestMode({
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="flex-1 h-px bg-[var(--color-border)]" />
-                  <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">Choose your answer</span>
+                  <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">
+                    {isMultiCorrect ? 'Choose ALL correct answers' : 'Choose your answer'}
+                  </span>
                   <div className="flex-1 h-px bg-[var(--color-border)]" />
                 </div>
-                <div className="flex flex-col gap-2">
-                {current.options.map((opt, i) => (
-                  <Button
-                    key={i}
-                    variant="secondary"
-                    className="justify-start text-left h-auto min-h-[44px] py-2"
-                    onClick={() => submitMultiple(i)}
-                  >
-                    <div className="study-content" dangerouslySetInnerHTML={{ __html: opt }} />
-                  </Button>
-                ))}
-                </div>
+                {isMultiCorrect ? (
+                  <div className="flex flex-col gap-2">
+                    {current.options.map((opt, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        className={`w-full flex items-center gap-3 text-left h-auto min-h-[44px] py-2 px-3 rounded-lg border transition-colors ${
+                          selectedMcIndices.has(i)
+                            ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)]'
+                            : 'bg-[var(--color-surface)] border-[var(--color-border)] hover:bg-[var(--color-primary-muted)]'
+                        }`}
+                        onClick={() => toggleMcSelection(i)}
+                      >
+                        <span className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                          selectedMcIndices.has(i) ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-white' : 'border-[var(--color-text-secondary)]'
+                        }`}>
+                          {selectedMcIndices.has(i) && <span className="text-xs">&#10003;</span>}
+                        </span>
+                        <div className="study-content" dangerouslySetInnerHTML={{ __html: opt }} />
+                      </button>
+                    ))}
+                    <Button onClick={submitMultiSelect} disabled={selectedMcIndices.size === 0}>Submit</Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {current.options.map((opt, i) => (
+                      <Button
+                        key={i}
+                        variant="secondary"
+                        className="justify-start text-left h-auto min-h-[44px] py-2"
+                        onClick={() => submitMultiple(i)}
+                      >
+                        <div className="study-content" dangerouslySetInnerHTML={{ __html: opt }} />
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -640,7 +678,7 @@ export function TestMode({
                       {current.answerWith === 'definition' ? 'Term' : 'Definition'}
                     </p>
                     <div 
-                      className="text-lg font-medium text-[var(--color-text)] study-content"
+                      className="text-xl font-medium text-[var(--color-text)] study-content"
                       dangerouslySetInnerHTML={{ 
                         __html: current.answerWith === 'definition' 
                           ? current.card.term 
@@ -655,7 +693,7 @@ export function TestMode({
                       Proposed {current.answerWith === 'definition' ? 'Definition' : 'Term'}
                     </p>
                     <div 
-                      className="text-base text-[var(--color-text)] study-content"
+                      className="text-lg text-[var(--color-text)] study-content"
                       dangerouslySetInnerHTML={{ 
                         __html: current.options[0] 
                       }} 

@@ -47,9 +47,10 @@ StudyFlow is a Quizlet-like study app built with:
 | `src/components/sharing/ShareDialog.tsx` | Sharing settings modal |
 | `src/components/sharing/ShareButton.tsx` | Share button component |
 | `src/components/inline/EditableCard.tsx` | Inline card editor with TipTap |
-| `src/lib/diacritics.ts` | Script-aware diacritics config registry (Arabic harakat, extensible) |
+| `src/lib/diacritics.ts` | Script-aware diacritics config registry (Arabic harakat, extensible) + diacritics comparison helpers |
 | `src/hooks/useScriptDetection.ts` | Hook to detect script/language from TipTap editor content |
-| `src/components/editor/DiacriticsToolbar.tsx` | Auto-showing diacritics toolbar for Arabic (and future languages) |
+| `src/components/editor/DiacriticsToolbar.tsx` | Auto-showing diacritics toolbar for Arabic (TipTap editors) |
+| `src/components/editor/InputDiacriticsToolbar.tsx` | Auto-showing diacritics toolbar for plain `<input>` elements (learn/test modes) |
 | `src/styles/editor.css` | TipTap + study mode CSS (`.study-content` rules) |
 | `src/styles/globals.css` | Design system CSS variables |
 | `supabase/migrations/` | All SQL migrations (001-005) |
@@ -897,3 +898,292 @@ Added a new "Cut & Glue" printable PDF activity where students cut out terms and
 - Term cut-out section: pre-scans all terms for max height, dynamically calculates rows per page
 - Name/Date fields on first page (matching test PDF pattern)
 - Answer key page with term = definition pairs
+
+---
+
+## Arabic Diacritics Toolbar in Learn/Test Modes + Harakat-Aware Grading
+
+### What It Does
+Extends the Arabic diacritics (harakat) toolbar to all places where users type written answers — Learn mode, Test mode, Block Builder game, and Race to Finish game. Also implements harakat-aware answer grading: users are not punished for adding extra or omitting diacritics, but are penalised for putting the **wrong** diacritic where the correct answer has one.
+
+### Grading Logic
+The comparison works on a per-character-position basis:
+- **User adds harakat where answer has none** → correct (extra diacritics tolerated)
+- **User omits harakat where answer has one** → correct (missing diacritics tolerated)
+- **User puts the wrong harakat where answer has one** → incorrect (e.g., fatha vs damma)
+- **Shadda** follows the same rules but is binary (present/absent) — "wrong shadda" can't exist, so it's only ever extra or missing, both tolerated
+- **Base text** (stripped of all diacritics) still uses Levenshtein distance for typo tolerance (max 2 edits)
+- If the base text matches only approximately (within Levenshtein tolerance but not exact), diacritics comparison is skipped since character alignment can't be guaranteed
+
+### How It Works
+1. **`gradeWrittenAnswer()`** in `algorithms.ts` detects Arabic content via Unicode ranges
+2. Strips all combining diacritics from both strings and compares base text with Levenshtein
+3. If base text is exactly equal, runs `compareWithDiacriticsTolerance()` which:
+   - Parses both strings into `(baseChar, diacritics[])` tuples via `parseArabicChars()`
+   - For each aligned position, extracts the vowel-class diacritic (fatha/kasra/damma/sukun/tanwin)
+   - If both sides have a vowel mark → they must be the same; if only one side has one → OK
+4. **`InputDiacriticsToolbar`** component detects Arabic in the `<input>` value using `detectScript()`, renders the same harakat buttons as the TipTap toolbar, and inserts characters at the cursor position using `onMouseDown` + `preventDefault()` to keep focus
+
+### New Files
+| Path | Purpose |
+|------|---------|
+| `src/components/editor/InputDiacriticsToolbar.tsx` | Diacritics toolbar for plain `<input>` elements — auto-shows via `detectScript()` on input value, inserts combining characters at cursor position, uses `requestAnimationFrame` to restore cursor after React re-render |
+
+### Modified Files
+- **`src/lib/diacritics.ts`** — Added exported helpers: `isArabicDiacritic()`, `stripArabicDiacritics()`, `parseArabicChars()`, `compareWithDiacriticsTolerance()`. Vowel-class diacritics set (`VOWEL_DIACRITICS`) used to identify which marks are mutually exclusive per position.
+- **`src/lib/algorithms.ts`** — `gradeWrittenAnswer()` now imports diacritics helpers and has an Arabic-aware code path: strip → Levenshtein on base text → position-by-position vowel mark comparison when base text is exactly equal.
+- **`src/components/modes/LearnMode.tsx`** — Added `useRef` + `writtenInputRef`, passed ref to `<Input>`, added `<InputDiacriticsToolbar>` below the written answer input.
+- **`src/components/modes/TestMode.tsx`** — Same integration for test mode written answer input.
+- **`src/components/modes/games/block-builder/QuestionPanel.tsx`** — Same integration for Block Builder game written input.
+- **`src/components/modes/games/race-to-finish/RaceQuestionPanel.tsx`** — Same integration for Race to Finish game written input.
+- **`src/styles/editor.css`** — Added `.diacritics-toolbar--input` variant (no border-top, standalone border + border-radius + margin-top) for use outside TipTap editors. Fixed `.diacritics-toolbar` border-top fallback from `var(--studio-border)` to `var(--studio-border, var(--color-border))`.
+
+### Key Design Decisions
+- **Symmetric comparison:** The diacritics tolerance logic is symmetric — it doesn't matter which argument is "correct" vs "user". This matters because some callers (TestMode, game hooks) pass arguments in swapped order.
+- **Skip diacritics check on approximate base match:** When base text matches within Levenshtein tolerance but not exactly, character positions can't be reliably aligned, so diacritics comparison is skipped entirely (answer accepted).
+- **Vowel-class grouping:** Only vowel marks (fatha, kasra, damma, sukun, tanwin variants) are compared. Shadda is a separate binary category — since there's only one kind of shadda, it can never be "wrong", only missing or extra.
+- **`InputDiacriticsToolbar` separate from `DiacriticsToolbar`:** The TipTap version uses `editor.chain().focus().insertContent()` and the `useScriptDetection` hook (which subscribes to ProseMirror events). The plain input version uses `selectionStart/End` + string slicing and `useMemo(detectScript(value))`. Sharing code would add unnecessary coupling.
+- **`requestAnimationFrame` for cursor restore:** After calling `onValueChange` (React state update), the input re-renders with the new value. The cursor position must be restored after React's commit phase, hence `rAF`.
+- **Disabled input guard:** The toolbar's `onMouseDown` handler checks `input.disabled` before inserting, preventing diacritic insertion on answered/locked inputs (e.g., LearnMode after submitting).
+
+---
+
+## Step 17: Equivalent Cards — Content-Based Answer Matching
+
+### What Changed
+
+When cards share the same term content (e.g., `a→apple` and `a→ant`), the app now treats them as an **equivalence group** — any answer from the group is accepted as correct. This works symmetrically: cards sharing the same definition also form groups. Affects all study modes, games, live game, match/memory modes, and printable PDFs.
+
+### Core Architecture
+
+Two new shared modules consolidate duplicated helpers and implement the equivalence system:
+
+**`src/lib/contentHelpers.ts`** — Consolidated content helpers previously duplicated across 4+ files:
+- `getTextContent(html)` — strips HTML tags
+- `normalizeContent(html)` — strips HTML, lowercases, trims (used for all content comparison)
+- `isImageOnly(content)` — checks if content is only images with no text
+- `hasTextContent(content)` — checks if content has any text
+- `selectCardsForQuestions(cards, count)` — selects cards for question generation, repeating evenly when count > cards.length
+
+**`src/lib/equivalence.ts`** — Core equivalence module:
+- `EquivalenceGroups` — `{ byTerm: Map<string, Card[]>, byDefinition: Map<string, Card[]> }` built with `buildEquivalenceGroups(cards)` (O(n), called once per session via `useMemo`)
+- `getEquivalentAnswers(card, answerWith, groups)` — returns all valid plain-text answers for a card
+- `getEquivalentAnswersHtml(card, answerWith, groups)` — same but returns raw HTML
+- `getWrongOptionPool(card, allCards, answerWith, groups)` — filters out cards whose answer-side content matches any correct answer
+- `findCorrectOptionIndices(options, card, answerWith, groups)` — scans MC option array to find ALL correct indices
+- `buildMultiAnswerOptions(card, allCards, answerWith, groups)` — builds 4-option MC arrays with up to 2 correct answers (1 primary + 1 equivalent), filling remaining slots with wrong options
+- `isDistinctAnswer(candidate, correctAnswersNorm)` — ensures T/F "false" pairings are genuinely wrong
+- `getCorrectAnswersNormSet(card, answerWith, groups)` — returns normalized set of all correct answers
+- `gradeWrittenAnswerMulti(correctAnswers, userInput)` — checks input against ALL equivalent correct answers using existing `gradeWrittenAnswer` (exact → Arabic diacritics tolerance → Levenshtein ≤ 2)
+- `areMatchableByContent(termContent, defContent, groups)` — checks if a term-definition pair is valid via equivalence lookup
+
+### Mode-by-Mode Changes
+
+#### LearnMode (`src/components/modes/LearnMode.tsx`)
+- MC generation uses `buildMultiAnswerOptions` (always multi-answer, no config toggle needed)
+- Multi-select checkbox UI when `correctOptionIndices.length > 1` — user must select ALL correct options
+- Written grading uses `gradeWrittenAnswerMulti`
+- Incorrect answer feedback shows all equivalent answers via `equivalentAnswersHtml`
+
+#### TestMode (`src/components/modes/TestMode.tsx`)
+- Added `multiAnswerMC` toggle to `TestConfig` and config screen UI
+- When enabled: MC uses `buildMultiAnswerOptions`, renders checkbox multi-select UI
+- When disabled: standard 1-correct MC behavior
+- Written grading uses `gradeWrittenAnswerMulti`
+- `TestQuestion` interface extended with `correctOptionIndices?: number[]` and `equivalentAnswers?: string[]`
+
+#### Block Builder (`src/components/modes/games/block-builder/`)
+- `BlockBuilderConfig` type extended with `multiAnswerMC: boolean`
+- Config screen toggle: "Multi-answer MC" checkbox (shown when MC is enabled)
+- `generateQuestions()` uses `buildMultiAnswerOptions` when `multiAnswerMC` is ON
+- `submitMultipleChoice` uses `correctOptionIndices.includes(optionIndex)` — any single correct option accepted (timed mode)
+- `submitWrittenAnswer` uses `gradeWrittenAnswerMulti`
+
+#### Race to Finish (`src/components/modes/games/race-to-finish/`)
+- `RaceConfig` type extended with `multiAnswerMC: boolean`
+- Config screen toggle added
+- `generateQuestion()` uses `buildMultiAnswerOptions` when `multiAnswerMC` is ON
+- Answer submission uses `correctOptionIndices.includes()` and `gradeWrittenAnswerMulti`
+
+#### Match Mode (`src/components/modes/MatchMode.tsx`, `src/components/study/MatchTile.tsx`)
+- `MatchTileData` extended with `tileIndex: number` — flows through drag/drop data
+- Matching changed from `cardId === cardId` to `areMatchableByContent(termTile.text, defTile.text, groups)`
+- Tracking changed from `matchedPairs: Set<string>` (card IDs) to `matchedTiles: Set<number>` (tile indices)
+- Same tile detection uses `tileIndex` instead of `cardId + type`
+
+#### Memory Card Flip (`src/components/modes/games/memory-card-flip/`)
+- `MemoryGameState.matchedCardIds: Set<string>` → `matchedTileIndices: Set<number>`
+- Match check: `first.cardId === second.cardId && first.type !== second.type` → `areMatchableByContent(termTile.content, defTile.content, groups)`
+- Completion check: `matchedTileIndices.size === pairCount * 2`
+- `MemoryCardFlipMode.tsx` updated to use `matchedTileIndices.has(i)` for display
+
+#### Live Game
+- **Types** (`src/types/liveGame.ts`): Added `correctOptionIndices: number[]` to `LiveQuestion` and `AnswerRevealPayload`
+- **Question generation** (`src/lib/liveGameUtils.ts`): `buildQuestions()` uses `getWrongOptionPool` and `findCorrectOptionIndices`
+- **Answer checking** (`src/stores/liveGameStore.ts`): `question.correctOptionIndices.includes(payload.chosenOption)`
+- **Host reveal** (`src/components/live/HostRevealView.tsx`): Highlights ALL correct options
+- **Player reveal** (`src/components/live/PlayerRevealView.tsx`): Shows all correct options with "Correct answers:" label when multiple exist
+- **Player page** (`src/pages/live/PlayerGamePage.tsx`): Passes `correctOptionIndices` to reveal view
+
+#### Printable PDFs (`src/lib/printables.ts`)
+- `PrintConfig` extended with `multiAnswerMC?: boolean`
+- MC generation uses `buildMultiAnswerOptions` when enabled; T/F uses `isDistinctAnswer` for false pairings
+- **Test answer key**: Shows `"apple (or ant)"` for written, multiple letters for MC (e.g., `"a, b) apple (or ant)"`)
+- **Line matching answer key**: Shows `"1 = C (or D)"` when equivalent definitions exist
+- **Cut & glue answer key**: Shows `"1. a = apple (or ant)"` with equivalent alternatives
+
+#### Print Dialog (`src/components/print/PrintDialog.tsx`)
+- Added `testMultiAnswerMC` state and "Multi-answer MC" checkbox to test config sub-view
+- Passes `multiAnswerMC` through to `PrintConfig`
+
+#### Validation (`src/lib/validation.ts`)
+- `DUPLICATE_TERMS` severity changed from `'block'` to `'warning'`
+- Message updated: "Some cards share the same term — they'll be treated as equivalent answers."
+
+### New Files
+| Path | Purpose |
+|------|---------|
+| `src/lib/contentHelpers.ts` | Consolidated text/content helpers — `getTextContent`, `normalizeContent`, `isImageOnly`, `hasTextContent`, `selectCardsForQuestions` |
+| `src/lib/equivalence.ts` | Equivalence groups, multi-answer grading, MC helpers, content-based matching |
+
+### Modified Files
+- **`src/lib/validation.ts`** — DUPLICATE_TERMS downgraded to warning
+- **`src/components/modes/LearnMode.tsx`** — Equivalence groups, multi-answer MC, feedback with all equivalents
+- **`src/components/modes/TestMode.tsx`** — Config toggle, multi-answer MC, equivalence-aware grading
+- **`src/components/modes/MatchMode.tsx`** — Content-based matching with `areMatchableByContent`
+- **`src/components/study/MatchTile.tsx`** — `tileIndex` in data, content-based same-tile detection
+- **`src/components/modes/SpinnerMode.tsx`** — Imports from `contentHelpers` instead of local helpers
+- **`src/components/modes/games/block-builder/types.ts`** — `multiAnswerMC` in config, `correctOptionIndices`/`equivalentAnswers` in question
+- **`src/components/modes/games/block-builder/useBlockBuilderGame.ts`** — Equivalence-aware question gen + grading
+- **`src/components/modes/games/block-builder/BlockBuilderConfig.tsx`** — Multi-answer MC toggle
+- **`src/components/modes/games/race-to-finish/types.ts`** — `multiAnswerMC` in config, `correctOptionIndices`/`equivalentAnswers` in question
+- **`src/components/modes/games/race-to-finish/useRaceToFinish.ts`** — Equivalence-aware question gen + grading
+- **`src/components/modes/games/race-to-finish/RaceToFinishConfig.tsx`** — Multi-answer MC toggle
+- **`src/components/modes/games/memory-card-flip/types.ts`** — `matchedCardIds` → `matchedTileIndices`
+- **`src/components/modes/games/memory-card-flip/useMemoryCardFlip.ts`** — Content-based matching
+- **`src/components/modes/games/MemoryCardFlipMode.tsx`** — Updated for `matchedTileIndices`
+- **`src/types/liveGame.ts`** — `correctOptionIndices` on `LiveQuestion` and `AnswerRevealPayload`
+- **`src/lib/liveGameUtils.ts`** — Equivalence-aware `buildQuestions`
+- **`src/stores/liveGameStore.ts`** — `correctOptionIndices` state, equivalence-aware answer checking
+- **`src/components/live/HostRevealView.tsx`** — Highlights all correct options
+- **`src/components/live/PlayerRevealView.tsx`** — Shows all correct answers
+- **`src/pages/live/PlayerGamePage.tsx`** — Passes `correctOptionIndices` to reveal
+- **`src/lib/printables.ts`** — Equivalence-aware MC/TF generation, answer keys show all equivalents
+- **`src/components/print/PrintDialog.tsx`** — Multi-answer MC toggle for printable test
+
+### Key Design Decisions
+- **Content normalization**: `stripHTML → lowercase → trim` is the single source of truth for content comparison. Two cards with `<b>apple</b>` and `apple` are correctly treated as equivalent.
+- **`useMemo` for groups**: `buildEquivalenceGroups(cards)` is called once per session via `useMemo`, not on every question.
+- **Game modes accept any single correct**: Timed modes (Block Builder, Race to Finish, Live Game) use `correctOptionIndices.includes(chosen)` — no multi-select UI. Only LearnMode and TestMode require selecting ALL correct options.
+- **Tile-index tracking for Match/Memory**: Switched from `cardId`-based to tile-index-based tracking because a match can now span two different card IDs (e.g., term tile from card 1 matched with definition tile from card 2).
+- **Multi-answer MC is opt-in**: All modes default to `multiAnswerMC: false`. When OFF, MC options have exactly 1 correct answer. When ON, `buildMultiAnswerOptions` includes up to 2 correct answers (1 primary + 1 equivalent). LearnMode always uses multi-answer behavior (no config, always enabled).
+- **T/F fallback**: When no distinct wrong answer exists (all cards equivalent), T/F forces `isTrue: true` instead of generating an impossible false question.
+- **Backward compatibility**: `correctOptionIndex` (singular) is preserved alongside `correctOptionIndices` (array) for all types to avoid breaking existing code paths.
+
+---
+
+## Step: Validation UX Overhaul — Deferred Warnings, Save Button, Graceful Empty Card Handling
+
+### What Changed
+
+Three user-facing improvements to how card validation works during set editing:
+
+1. **Deferred validation warnings**: Validation errors no longer appear immediately when creating/editing a set. Warnings only show after the user explicitly clicks "Save Changes" or tries to start a study mode. Once activated, errors update in real-time as the user fixes them.
+
+2. **"Save Changes" button**: A prominent save button was added at the bottom of `SetDetailPage` (below "Add card"). Shows "Save Changes" when dirty (primary color) or "All changes saved" when clean (muted/disabled). Auto-save still runs silently in the background.
+
+3. **Context-aware validation (`'save'` vs `'study'`)**: `validateCard()` now accepts a `ValidationContext` parameter. Empty-card errors (`EMPTY_CONTENT`, `EMPTY_TERM_CONTENT`, `EMPTY_DEFINITION_CONTENT`) only fire in `'study'` context. All save paths use `'save'` context, so empty/incomplete cards are freely saved without blocking.
+
+4. **Graceful empty/incomplete card handling for study modes**: Blank cards (both sides empty) and incomplete cards (only one side filled) no longer block the user from starting any study mode or game. Instead, a warning toast tells the user how many cards will be skipped (e.g., "2 blank and 1 incomplete cards will be skipped"), and those cards are filtered out before reaching the study component.
+
+### How It Works
+
+- **`ValidationContext` type** (`'save' | 'study'`): Added to `src/lib/validation.ts`. The three empty-content checks in `validateCard()` are wrapped in `if (context === 'study')`. Default is `'study'` for backward compatibility.
+- **`validationActivated` state** in `SetDetailPage`: Starts `false`. Set to `true` when user clicks "Save Changes" or starts a study mode. Card error display and warning banners are gated behind this flag.
+- **Silent auto-save**: `debouncedSave` in `SetDetailPage` no longer runs validation or shows errors. It only silently skips save on `MAX_LENGTH_EXCEEDED` (data integrity). The auto-save in `EditorPage` (`useAutoSave`) also passes `'save'` context.
+- **Card filtering**: `StudyPage.tsx` filters cards via `hasContent(c) && hasTermContent(c) && hasDefinitionContent(c)` before passing to any study mode component. `liveGameStore.ts` does the same before `buildQuestions()`.
+- **Study mode buttons**: Converted from `<Link>` to `<button onClick={handleStartStudy}>` to show the skip warning toast before navigating.
+
+### Files Changed
+
+- **`src/lib/validation.ts`** — Added `ValidationContext` type; `validateCard` accepts optional context param; exported `hasTermContent` and `hasDefinitionContent`
+- **`src/stores/validationStore.ts`** — `runValidation` accepts context param (default `'save'`); `canStudy` reverted to set-level only check
+- **`src/pages/SetDetailPage.tsx`** — `validationActivated` flag; silent `debouncedSave`; `handleExplicitSave` callback; `handleStartStudy` with skip warning; `handleStartLiveGame` with skip warning; "Save Changes" button; conditional error display on `EditableCard`; warning banners gated behind activation
+- **`src/pages/StudyPage.tsx`** — Filters out blank/incomplete cards before passing to study mode components
+- **`src/stores/liveGameStore.ts`** — Filters cards in `createSession` before building questions and snapshot
+- **`src/hooks/useAutoSave.ts`** — Passes `'save'` context to `runValidation`
+- **`src/pages/EditorPage.tsx`** — Passes `'save'` context to `runValidation` in useEffect and `handleSaveAndExit`
+
+### Key Design Decisions
+- **Auto-save remains silent**: The background debounced save never shows validation toasts — it just saves. Only explicit user actions (Save button, starting a study mode) surface errors.
+- **Warn but don't block**: Empty/incomplete cards produce a toast warning when starting study modes but never prevent the user from studying. The cards are simply excluded.
+- **Filtering at the gateway**: Card filtering happens in `StudyPage` (the single entry point for all study modes) and `liveGameStore.createSession`, so no individual mode component needs to worry about incomplete cards.
+- **`hasTermContent` / `hasDefinitionContent` exported**: These were previously private functions in `validation.ts`. Exported so `SetDetailPage`, `StudyPage`, and `liveGameStore` can detect incomplete cards without duplicating logic.
+
+---
+
+## Step 30 — Fix Flashcard "Know it" / "Study again" Buttons Not Working
+
+### Problem
+In flashcard mode, clicking "Know it" or "Study again" did nothing — the card never advanced. "Skip" worked fine.
+
+### Root Cause
+`handleRate` in `FlashcardMode.tsx` was `async` and `await`ed `recordReview()` before calling `setIndex()`. The `recordReview` call triggers a Zustand store update (and potentially a cloud sync via `syncSetToCloud`), which could hang or throw. Since the `await` blocked, `setIndex` was never reached.
+
+### Fix
+Changed `handleRate` from async/await to fire-and-forget. The review recording runs in the background with `.catch()` for error logging, while the card advances immediately — matching how `handleSkip` already worked.
+
+### Files Changed
+- **`src/components/modes/FlashcardMode.tsx`** — `handleRate` changed from `async` to synchronous; `recordReview` called without `await`, errors caught via `.catch()`
+
+---
+
+## Step 31 — Increase Text Size for Terms & Definitions Across Entire App
+
+### Problem
+Terms and definitions appeared too small across all editors, study modes, and games.
+
+### Changes
+Bumped all term/definition text sizes up by one step throughout the app.
+
+#### Editors (CSS)
+| Area | Before | After |
+|------|--------|-------|
+| Studio editor (`ProseMirror.studio-editor`) | `1.125rem` (18px) | `1.25rem` (20px) |
+| Inline editor (`ProseMirror.inline-editor`) | `0.9375rem` (15px) | `1.0625rem` (17px) |
+
+#### Study Modes & Games (Tailwind classes)
+| Component | Before | After |
+|-----------|--------|-------|
+| Flashcard term/definition | `text-lg` | `text-xl` |
+| LearnMode term prompt | `text-lg` | `text-xl` |
+| LearnMode true/false definition | `text-base` | `text-lg` |
+| TestMode question prompts (×4) | `text-lg` | `text-xl` |
+| TestMode true/false definition | `text-base` | `text-lg` |
+| MatchTile text | `text-sm` | `text-base` |
+| BlockBuilder question prompt | `text-lg` | `text-xl` |
+| BlockBuilder true/false definition | `text-base` | `text-lg` |
+| RaceToFinish question prompt | `text-lg` | `text-xl` |
+| RaceToFinish true/false definition | `text-base` | `text-lg` |
+| MemoryCard content | `text-xs / text-sm` | `text-sm / text-base` |
+| HostQuestionView term | `text-2xl` | `text-3xl` |
+| HostQuestionView options | `text-sm` | `text-base` |
+| PlayerQuestionView term | `text-lg` | `text-xl` |
+| PlayerQuestionView options | `text-sm` | `text-base` |
+| HostRevealView term | `text-xl` | `text-2xl` |
+| HostRevealView options | `text-sm` | `text-base` |
+| PlayerRevealView options | `text-sm` | `text-base` |
+
+### Files Changed
+- **`src/styles/editor.css`** — Increased `font-size` for `.ProseMirror.studio-editor` and `.ProseMirror.inline-editor`
+- **`src/components/study/Flashcard.tsx`** — Term, definition, and progressive reveal text bumped to `text-xl`
+- **`src/components/modes/LearnMode.tsx`** — Term prompt and true/false definition bumped
+- **`src/components/modes/TestMode.tsx`** — All question prompts and true/false definition bumped
+- **`src/components/study/MatchTile.tsx`** — Tile text bumped to `text-base`
+- **`src/components/modes/games/block-builder/QuestionPanel.tsx`** — Prompt and true/false bumped
+- **`src/components/modes/games/race-to-finish/RaceQuestionPanel.tsx`** — Prompt and true/false bumped
+- **`src/components/modes/games/memory-card-flip/MemoryCard.tsx`** — Card content bumped
+- **`src/components/live/HostQuestionView.tsx`** — Term and options bumped
+- **`src/components/live/PlayerQuestionView.tsx`** — Term and options bumped
+- **`src/components/live/HostRevealView.tsx`** — Term and options bumped
+- **`src/components/live/PlayerRevealView.tsx`** — Options bumped

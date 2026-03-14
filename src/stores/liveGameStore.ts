@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { buildQuestions, calculatePoints, generatePlayerToken, savePlayerSession, clearPlayerSession } from '../lib/liveGameUtils';
+import { hasContent, hasTermContent, hasDefinitionContent } from '../lib/validation';
 import type { StudySet } from '../types';
 import type {
   GameStatus,
@@ -24,8 +25,9 @@ interface LiveGameState {
   status: GameStatus;
   questions: LiveQuestion[];
   currentQuestionIndex: number;
-  currentQuestion: Omit<LiveQuestion, 'correctOptionIndex'> | null;
+  currentQuestion: Omit<LiveQuestion, 'correctOptionIndex' | 'correctOptionIndices'> | null;
   correctOptionIndex: number | null;
+  correctOptionIndices: number[] | null;
   playerToken: string | null;
   nickname: string | null;
   players: PlayerEntry[];
@@ -70,6 +72,7 @@ const initialState: LiveGameState = {
   currentQuestionIndex: 0,
   currentQuestion: null,
   correctOptionIndex: null,
+  correctOptionIndices: null,
   playerToken: null,
   nickname: null,
   players: [],
@@ -100,8 +103,11 @@ export const useLiveGameStore = create<LiveGameState & LiveGameActions>((set, ge
       if (codeError || !codeData) throw codeError ?? new Error('Failed to generate game code');
 
       const gameCode: string = codeData;
-      const questions = buildQuestions(studySet.cards);
-      const snapshot = studySet.cards.map(({ id, term, definition, imageData }) => ({ id, term, definition, imageData }));
+      const usableCards = studySet.cards.filter(
+        (c) => hasContent(c) && hasTermContent(c) && hasDefinitionContent(c)
+      );
+      const questions = buildQuestions(usableCards);
+      const snapshot = usableCards.map(({ id, term, definition, imageData }) => ({ id, term, definition, imageData }));
 
       const { data, error } = await supabase
         .from('live_game_sessions')
@@ -296,6 +302,7 @@ export const useLiveGameStore = create<LiveGameState & LiveGameActions>((set, ge
 
     const payload: AnswerRevealPayload = {
       correctOptionIndex: question.correctOptionIndex,
+      correctOptionIndices: question.correctOptionIndices,
       perPlayer,
     };
     _channel.send({ type: 'broadcast', event: 'game:answer_reveal', payload });
@@ -319,7 +326,7 @@ export const useLiveGameStore = create<LiveGameState & LiveGameActions>((set, ge
       }
     }
 
-    set({ status: 'reveal', players: updatedPlayers, correctOptionIndex: question.correctOptionIndex });
+    set({ status: 'reveal', players: updatedPlayers, correctOptionIndex: question.correctOptionIndex, correctOptionIndices: question.correctOptionIndices });
   },
 
   showLeaderboard: () => {
@@ -553,6 +560,7 @@ export const useLiveGameStore = create<LiveGameState & LiveGameActions>((set, ge
       questionStartedAt: Date.now(),
       timerRemainingMs: adjustedRemaining,
       correctOptionIndex: null,
+      correctOptionIndices: null,
       _timerInterval: timerInterval,
     });
   },
@@ -573,6 +581,7 @@ export const useLiveGameStore = create<LiveGameState & LiveGameActions>((set, ge
     set({
       status: 'reveal',
       correctOptionIndex: payload.correctOptionIndex,
+      correctOptionIndices: payload.correctOptionIndices ?? [payload.correctOptionIndex],
       players: updatedPlayers,
       myAnswer: myResult
         ? { chosenOption: myResult.chosenOption, timeTakenMs: 0 }
@@ -601,7 +610,7 @@ export const useLiveGameStore = create<LiveGameState & LiveGameActions>((set, ge
     const question = questions[currentQuestionIndex];
     if (!question) return;
 
-    const isCorrect = payload.chosenOption === question.correctOptionIndex;
+    const isCorrect = question.correctOptionIndices.includes(payload.chosenOption);
     const player = players.find((p) => p.playerToken === payload.playerToken);
     const { points } = calculatePoints(isCorrect, payload.timeTakenMs, question.timeLimitMs, player?.streak ?? 0);
 

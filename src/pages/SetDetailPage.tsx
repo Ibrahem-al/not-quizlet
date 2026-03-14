@@ -16,6 +16,8 @@ import {
   Printer,
   Zap,
   Gamepad2,
+  Save,
+  Filter,
 } from 'lucide-react';
 import { useDebouncedCallback } from 'use-debounce';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -34,12 +36,14 @@ import { useAuthStore } from '../stores/authStore';
 import { useLiveGameStore } from '../stores/liveGameStore';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { useTranslation } from '../hooks/useTranslation';
-import { validateSet, validateCard, type ValidationError } from '../lib/validation';
+import { validateSet, validateCard, hasContent, hasTermContent, hasDefinitionContent, type ValidationError } from '../lib/validation';
 import { parseImportText } from '../lib/importText';
 import { uuid, timestamp } from '../lib/utils';
 import { PhotoImportModal } from '../components/import/PhotoImportModal';
 import { PrintDialog } from '../components/print/PrintDialog';
 import { GamesBrowserModal } from '../components/games/GamesBrowserModal';
+import { CardFilterModal } from '../components/CardFilterModal';
+import { useCardFilterStore } from '../stores/cardFilterStore';
 import type { Card as CardType, StudySet } from '../types';
 
 const modes = [
@@ -88,7 +92,9 @@ export function SetDetailPage() {
   const [showMoveDialog, setShowMoveDialog] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [showGamesBrowser, setShowGamesBrowser] = useState(false);
+  const [showCardFilter, setShowCardFilter] = useState(false);
   const [cardErrors, setCardErrors] = useState<Record<string, ValidationError[]>>({});
+  const [validationActivated, setValidationActivated] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
 
   localSetRef.current = localSet;
@@ -111,36 +117,21 @@ export function SetDetailPage() {
 
   const debouncedSave = useDebouncedCallback(() => {
     const payload = localSetRef.current;
-    if (payload) {
-      // Validate all cards before saving
-      const errors: Record<string, ValidationError[]> = {};
-      let hasHardErrors = false;
-      
-      for (const card of payload.cards) {
-        const result = validateCard(card);
-        if (!result.valid) {
-          errors[card.id] = result.errors;
-          if (result.errors.some(e => e.severity === 'hard')) {
-            hasHardErrors = true;
-          }
-        }
-      }
-      
-      setCardErrors(errors);
-      
-      // Don't save if there are hard errors
-      if (hasHardErrors) {
-        setToast('Please fix card errors before saving');
-        return;
-      }
-      
-      setSaveStatus('saving');
-      replaceSet({ ...payload, updatedAt: timestamp() }).then(() => {
-        setDirty(false);
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      });
-    }
+    if (!payload) return;
+
+    // Silent auto-save — only block on MAX_LENGTH_EXCEEDED (data integrity)
+    const hasMaxLength = payload.cards.some((card) => {
+      const result = validateCard(card, 'save');
+      return result.errors.some((e) => e.code === 'MAX_LENGTH_EXCEEDED');
+    });
+    if (hasMaxLength) return; // silently skip; user will see error on explicit save
+
+    setSaveStatus('saving');
+    replaceSet({ ...payload, updatedAt: timestamp() }).then(() => {
+      setDirty(false);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    });
   }, 2000);
 
   const applyCardUpdate = useCallback((cardId: string, updates: Partial<CardType>) => {
@@ -206,6 +197,76 @@ export function SetDetailPage() {
   const { pattern, canSuggest } = useSetPattern(localSet?.cards ?? []);
   const createSession = useLiveGameStore((s) => s.createSession);
   const [startingLive, setStartingLive] = useState(false);
+  const { getSelectedIds, setSelectedIds, clearFilter, isFilterActive } = useCardFilterStore();
+
+  // Re-run validation live once activated (so errors clear as user fixes them)
+  useEffect(() => {
+    if (!validationActivated || !localSet) return;
+    const errors: Record<string, ValidationError[]> = {};
+    for (const card of localSet.cards) {
+      const result = validateCard(card, 'save');
+      if (result.errors.length > 0) {
+        errors[card.id] = result.errors;
+      }
+    }
+    setCardErrors(errors);
+  }, [localSet?.cards, validationActivated]);
+
+  const handleExplicitSave = useCallback(() => {
+    const payload = localSetRef.current;
+    if (!payload) return;
+
+    setValidationActivated(true);
+
+    // Validate in 'save' context (no empty-card errors)
+    const errors: Record<string, ValidationError[]> = {};
+    let hasHardErrors = false;
+    for (const card of payload.cards) {
+      const result = validateCard(card, 'save');
+      if (result.errors.length > 0) {
+        errors[card.id] = result.errors;
+        if (result.errors.some((e) => e.severity === 'hard')) {
+          hasHardErrors = true;
+        }
+      }
+    }
+    setCardErrors(errors);
+
+    if (hasHardErrors) {
+      setToast('Please fix errors before saving');
+      return;
+    }
+
+    debouncedSave.cancel();
+    setSaveStatus('saving');
+    replaceSet({ ...payload, updatedAt: timestamp() }).then(() => {
+      setDirty(false);
+      setSaveStatus('saved');
+      setToast(null);
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    });
+  }, [debouncedSave, replaceSet]);
+
+  const handleStartStudy = useCallback((path: string) => {
+    const currentSet = localSetRef.current;
+    if (!currentSet) return;
+
+    // Count blank and incomplete cards
+    const blankCards = currentSet.cards.filter((c) => !hasContent(c));
+    const incompleteCards = currentSet.cards.filter(
+      (c) => hasContent(c) && (!hasTermContent(c) || !hasDefinitionContent(c))
+    );
+    const skippedCount = blankCards.length + incompleteCards.length;
+
+    if (skippedCount > 0) {
+      const parts: string[] = [];
+      if (blankCards.length > 0) parts.push(`${blankCards.length} blank`);
+      if (incompleteCards.length > 0) parts.push(`${incompleteCards.length} incomplete`);
+      setToast(`${parts.join(' and ')} card${skippedCount > 1 ? 's' : ''} will be skipped.`);
+    }
+
+    navigate(`/sets/${currentSet.id}/study/${path}`);
+  }, [navigate]);
 
   if (!set) {
     return (
@@ -235,6 +296,19 @@ export function SetDetailPage() {
   const isOwner = !displaySet.userId || displaySet.userId === user?.id;
 
   const handleStartLiveGame = async () => {
+    const blankCards = displaySet.cards.filter((c) => !hasContent(c));
+    const incompleteCards = displaySet.cards.filter(
+      (c) => hasContent(c) && (!hasTermContent(c) || !hasDefinitionContent(c))
+    );
+    const skippedCount = blankCards.length + incompleteCards.length;
+
+    if (skippedCount > 0) {
+      const parts: string[] = [];
+      if (blankCards.length > 0) parts.push(`${blankCards.length} blank`);
+      if (incompleteCards.length > 0) parts.push(`${incompleteCards.length} incomplete`);
+      setToast(`${parts.join(' and ')} card${skippedCount > 1 ? 's' : ''} will be skipped.`);
+    }
+
     setStartingLive(true);
     const sessionId = await createSession(displaySet);
     setStartingLive(false);
@@ -288,6 +362,23 @@ export function SetDetailPage() {
         onClose={() => setShowGamesBrowser(false)}
         setId={displaySet.id}
         cardCount={cards.length}
+      />
+      <CardFilterModal
+        isOpen={showCardFilter}
+        onClose={() => setShowCardFilter(false)}
+        cards={cards}
+        selectedIds={getSelectedIds(displaySet.id)}
+        onApply={(ids) => {
+          // If all valid cards are selected, clear filter instead
+          const validCount = cards.filter(
+            (c) => hasContent(c) && hasTermContent(c) && hasDefinitionContent(c)
+          ).length;
+          if (ids.size >= validCount) {
+            clearFilter(displaySet.id);
+          } else {
+            setSelectedIds(displaySet.id, ids);
+          }
+        }}
       />
       <MoveToFolderDialog
         setId={displaySet.id}
@@ -420,15 +511,30 @@ export function SetDetailPage() {
               <h2 className="text-lg font-bold text-[var(--color-text)] tracking-tight">
                 Choose a study mode
               </h2>
-              {displaySet.studyStats.totalSessions > 0 && (
-                <div className="flex items-center gap-1.5 text-sm text-[var(--color-text-secondary)]">
-                  <Clock className="w-4 h-4" />
-                  <span>{displaySet.studyStats.totalSessions} sessions</span>
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                {displaySet.studyStats.totalSessions > 0 && (
+                  <div className="flex items-center gap-1.5 text-sm text-[var(--color-text-secondary)]">
+                    <Clock className="w-4 h-4" />
+                    <span>{displaySet.studyStats.totalSessions} sessions</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowCardFilter(true)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                    isFilterActive(displaySet.id, cards.filter((c) => hasContent(c) && hasTermContent(c) && hasDefinitionContent(c)).length)
+                      ? 'border-[var(--color-primary)]/50 bg-[var(--color-primary-muted)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/30'
+                      : 'border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:border-[var(--color-text-tertiary)]'
+                  }`}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  {isFilterActive(displaySet.id, cards.filter((c) => hasContent(c) && hasTermContent(c) && hasDefinitionContent(c)).length)
+                    ? `${getSelectedIds(displaySet.id)!.size} / ${cards.filter((c) => hasContent(c) && hasTermContent(c) && hasDefinitionContent(c)).length} cards`
+                    : 'Filter'}
+                </button>
+              </div>
             </div>
             
-            {!canStartStudying && minCardsError && (
+            {validationActivated && !canStartStudying && minCardsError && (
               <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-3 text-sm">
                 <div className="flex items-center gap-2 text-[var(--color-text)]">
                   <AlertCircle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
@@ -438,7 +544,7 @@ export function SetDetailPage() {
               </div>
             )}
             
-            {duplicateTermsError && (
+            {validationActivated && duplicateTermsError && (
               <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-3 text-sm">
                 <div className="flex items-center gap-2 text-[var(--color-text)]">
                   <AlertCircle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
@@ -450,7 +556,7 @@ export function SetDetailPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {modes.map(({ path, label, icon: Icon, description, color }) =>
                 canStartStudying ? (
-                  <Link key={path} to={`/sets/${displaySet.id}/study/${path}`} className="h-full">
+                  <button key={path} onClick={() => handleStartStudy(path)} className="h-full w-full text-left">
                     <Card variant="elevated" className="flex flex-col items-center gap-2 py-5 h-full min-h-[160px] justify-center text-center group cursor-pointer relative overflow-hidden">
                       <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-0 group-hover:opacity-5 transition-opacity duration-300`} />
                       <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-lg mb-1`}>
@@ -461,7 +567,7 @@ export function SetDetailPage() {
                         {description}
                       </span>
                     </Card>
-                  </Link>
+                  </button>
                 ) : (
                   <div
                     key={path}
@@ -667,23 +773,40 @@ export function SetDetailPage() {
                 onEnterInDefinition={() => handleAddCard(index + 1)}
                 onFocusNextCard={() => setFocusedCardIndex(index + 1 < cards.length ? index + 1 : null)}
                 onFocusPrevCard={() => setFocusedCardIndex(index > 0 ? index - 1 : null)}
-                validationErrors={cardErrors[card.id]}
+                validationErrors={validationActivated ? cardErrors[card.id] : undefined}
               />
             ))}
           </ul>
 
           {isOwner && (
-            <motion.button
-              type="button"
-              onClick={() => handleAddCard()}
-              whileHover={{ scale: 1.005 }}
-              whileTap={{ scale: 0.995 }}
-              className="mt-4 w-full rounded-[var(--radius-card)] border-2 border-dashed border-[var(--color-border)] py-6 flex items-center justify-center gap-2 text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/20 transition-all duration-[var(--duration-normal)] font-medium"
-            >
-              <Plus className="w-5 h-5 shrink-0" />
-              Add card
-              <span className="text-xs text-[var(--color-text-tertiary)]">(or press Enter)</span>
-            </motion.button>
+            <>
+              <motion.button
+                type="button"
+                onClick={() => handleAddCard()}
+                whileHover={{ scale: 1.005 }}
+                whileTap={{ scale: 0.995 }}
+                className="mt-4 w-full rounded-[var(--radius-card)] border-2 border-dashed border-[var(--color-border)] py-6 flex items-center justify-center gap-2 text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/20 transition-all duration-[var(--duration-normal)] font-medium"
+              >
+                <Plus className="w-5 h-5 shrink-0" />
+                Add card
+                <span className="text-xs text-[var(--color-text-tertiary)]">(or press Enter)</span>
+              </motion.button>
+
+              <div className="mt-4 flex justify-center">
+                <button
+                  onClick={handleExplicitSave}
+                  disabled={saveStatus === 'saving' || !dirty}
+                  className={`inline-flex items-center justify-center gap-2 w-full max-w-md px-6 py-3 rounded-[var(--radius-card)] font-semibold text-base transition-all duration-200 shadow-sm ${
+                    dirty
+                      ? 'bg-[var(--color-primary)] text-white hover:opacity-90'
+                      : 'bg-[var(--color-surface-muted)] text-[var(--color-text-secondary)] border border-[var(--color-border)]'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <Save className="w-5 h-5" />
+                  {saveStatus === 'saving' ? 'Saving...' : dirty ? 'Save Changes' : 'All changes saved'}
+                </button>
+              </div>
+            </>
           )}
         </section>
       </div>

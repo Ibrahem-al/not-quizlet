@@ -151,7 +151,7 @@ export function Flashcard({
             }}
           >
             <div
-              className="text-lg text-[var(--color-text)] study-content"
+              className="text-xl text-[var(--color-text)] study-content"
               dangerouslySetInnerHTML={{ __html: card.term }}
             />
             <span className="mt-2 text-sm text-[var(--color-text-secondary)] shrink-0">
@@ -169,11 +169,11 @@ export function Flashcard({
           >
             {showFullDefinition ? (
               <div
-                className="text-lg text-[var(--color-text)] study-content"
+                className="text-xl text-[var(--color-text)] study-content"
                 dangerouslySetInnerHTML={{ __html: card.definition }}
               />
             ) : (
-              <p className="text-lg text-[var(--color-text)] whitespace-pre-wrap">
+              <p className="text-xl text-[var(--color-text)] whitespace-pre-wrap">
                 {visiblePlainText}
               </p>
             )}

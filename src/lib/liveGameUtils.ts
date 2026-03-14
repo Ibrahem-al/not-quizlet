@@ -1,4 +1,5 @@
 import { shuffle } from './algorithms';
+import { buildEquivalenceGroups, getWrongOptionPool, findCorrectOptionIndices } from './equivalence';
 import type { Card } from '../types';
 import type { LiveQuestion } from '../types/liveGame';
 
@@ -8,11 +9,12 @@ const STREAK_BONUS_PER = 50;
 const STREAK_BONUS_MAX = 300;
 
 export function buildQuestions(cards: Card[]): LiveQuestion[] {
+  const groups = buildEquivalenceGroups(cards);
   const shuffledCards = shuffle([...cards]);
 
   return shuffledCards.map((card, questionIndex) => {
-    const others = cards.filter((c) => c.id !== card.id);
-    const wrongPool = shuffle(others).slice(0, 3).map((c) => c.definition);
+    const wrongCards = getWrongOptionPool(card, cards, 'definition', groups);
+    const wrongPool = shuffle(wrongCards).slice(0, 3).map((c) => c.definition);
 
     // Pad if fewer than 3 other cards exist
     while (wrongPool.length < 3) {
@@ -20,7 +22,8 @@ export function buildQuestions(cards: Card[]): LiveQuestion[] {
     }
 
     const allOptions = shuffle([card.definition, ...wrongPool]);
-    const correctOptionIndex = allOptions.indexOf(card.definition);
+    const correctOptionIndices = findCorrectOptionIndices(allOptions, card, 'definition', groups);
+    const correctOptionIndex = correctOptionIndices[0] ?? allOptions.indexOf(card.definition);
 
     return {
       questionIndex,
@@ -28,6 +31,7 @@ export function buildQuestions(cards: Card[]): LiveQuestion[] {
       imageData: card.imageData,
       options: allOptions,
       correctOptionIndex,
+      correctOptionIndices,
       timeLimitMs: 15000,
     };
   });

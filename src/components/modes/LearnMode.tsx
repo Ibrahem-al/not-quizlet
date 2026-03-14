@@ -3,7 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../ui';
 import { Input } from '../ui';
 import { useSpacedRep } from '../../hooks/useSpacedRep';
-import { shuffle, gradeWrittenAnswer } from '../../lib/algorithms';
+import { shuffle } from '../../lib/algorithms';
+import { getTextContent } from '../../lib/contentHelpers';
+import { buildEquivalenceGroups, getEquivalentAnswers, getEquivalentAnswersHtml, getWrongOptionPool, getCorrectAnswersNormSet, isDistinctAnswer, findCorrectOptionIndices, gradeWrittenAnswerMulti, buildMultiAnswerOptions } from '../../lib/equivalence';
+import type { EquivalenceGroups } from '../../lib/equivalence';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { Card } from '../../types';
 import { InputDiacriticsToolbar } from '../editor/InputDiacriticsToolbar';
@@ -21,12 +24,15 @@ interface LearnModeProps {
 interface SessionCard {
   card: Card;
   questionType: QuestionType;
-  options?: string[]; // for MC: [correct, wrong1, wrong2, wrong3]
-  correctOption?: number;
+  options?: string[]; // for MC: shuffled HTML options
+  correctOption?: number; // legacy single correct index
+  correctOptionIndices?: number[]; // all correct indices (equivalence)
+  equivalentAnswers?: string[]; // all valid plain-text answers
+  equivalentAnswersHtml?: string[]; // all valid HTML answers (for display)
   isTrue?: boolean; // for T/F: term+definition is correct pair
 }
 
-function buildSession(cards: Card[], maxCards = 20): SessionCard[] {
+function buildSession(cards: Card[], groups: EquivalenceGroups, maxCards = 20): SessionCard[] {
   const shuffled = shuffle(cards).slice(0, maxCards);
   return shuffled.map((card) => {
     const r = Math.random();
@@ -35,60 +41,91 @@ function buildSession(cards: Card[], maxCards = 20): SessionCard[] {
     else if (r < 0.8) questionType = 'written';
     else questionType = 'truefalse';
 
+    const equivalentAnswers = getEquivalentAnswers(card, 'definition', groups);
+    const equivalentAnswersHtml = getEquivalentAnswersHtml(card, 'definition', groups);
+
     if (questionType === 'multiple') {
-      const others = cards.filter((c) => c.id !== card.id);
-      const wrong = shuffle(others)
-        .slice(0, 3)
-        .map((c) => c.definition);
-      const options = shuffle([card.definition, ...wrong]);
-      const correctOption = options.indexOf(card.definition);
-      return { card, questionType, options, correctOption };
+      const options = buildMultiAnswerOptions(card, cards, 'definition', groups);
+      const correctOptionIndices = findCorrectOptionIndices(options, card, 'definition', groups);
+      const correctOption = correctOptionIndices[0] ?? 0;
+      return { card, questionType, options, correctOption, correctOptionIndices, equivalentAnswers, equivalentAnswersHtml };
     }
 
     if (questionType === 'truefalse') {
       const isTrue = Math.random() > 0.5;
       let definition = card.definition;
       if (!isTrue && cards.length > 1) {
-        const other = shuffle(cards.filter((c) => c.id !== card.id))[0];
-        definition = other?.definition ?? card.definition;
+        const correctNorm = getCorrectAnswersNormSet(card, 'definition', groups);
+        const distinctOthers = cards.filter((c) => isDistinctAnswer(c.definition, correctNorm));
+        if (distinctOthers.length > 0) {
+          definition = shuffle(distinctOthers)[0].definition;
+        } else {
+          // No distinct wrong answers available — force true
+          definition = card.definition;
+          return { card, questionType, options: [definition], isTrue: true, equivalentAnswers, equivalentAnswersHtml };
+        }
       }
-      return { card, questionType, options: [definition], isTrue };
+      return { card, questionType, options: [definition], isTrue, equivalentAnswers, equivalentAnswersHtml };
     }
 
-    return { card, questionType };
+    return { card, questionType, equivalentAnswers, equivalentAnswersHtml };
   });
 }
 
 export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
   const { t } = useTranslation();
+  const groups = useMemo(() => buildEquivalenceGroups(cards), [cards]);
   const sessionCards = useMemo(
-    () => buildSession(cards, 20),
-    [cards]
+    () => buildSession(cards, groups, 20),
+    [cards, groups]
   );
   const [index, setIndex] = useState(0);
   const [writtenAnswer, setWrittenAnswer] = useState('');
   const writtenInputRef = useRef<HTMLInputElement>(null);
   const [answered, setAnswered] = useState(false);
   const [correct, setCorrect] = useState(false);
+  const [selectedMcIndices, setSelectedMcIndices] = useState<Set<number>>(new Set());
   const [sessionComplete, setSessionComplete] = useState(false);
   const { recordReview } = useSpacedRep(setId);
 
   const current = sessionCards[index];
   const progress = sessionCards.length ? t('progress', { current: index + 1, total: sessionCards.length }) : '0 / 0';
+  const isMultiCorrect = (current?.correctOptionIndices?.length ?? 0) > 1;
 
   const submitWritten = useCallback(() => {
     if (!current || current.questionType !== 'written') return;
-    const ok = gradeWrittenAnswer(current.card.definition, writtenAnswer);
+    const answers = current.equivalentAnswers ?? [getTextContent(current.card.definition)];
+    const ok = gradeWrittenAnswerMulti(answers, writtenAnswer);
     setCorrect(ok);
     setAnswered(true);
   }, [current, writtenAnswer]);
 
   const submitMultiple = useCallback((choiceIndex: number) => {
-    if (!current || current.questionType !== 'multiple' || current.correctOption === undefined) return;
-    const ok = choiceIndex === current.correctOption;
+    if (!current || current.questionType !== 'multiple') return;
+    const indices = current.correctOptionIndices ?? (current.correctOption !== undefined ? [current.correctOption] : []);
+    if (indices.length === 0) return;
+    const ok = indices.includes(choiceIndex);
     setCorrect(ok);
     setAnswered(true);
   }, [current]);
+
+  const toggleMcSelection = useCallback((choiceIndex: number) => {
+    setSelectedMcIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(choiceIndex)) next.delete(choiceIndex);
+      else next.add(choiceIndex);
+      return next;
+    });
+  }, []);
+
+  const submitMultiSelect = useCallback(() => {
+    if (!current || current.questionType !== 'multiple') return;
+    const correctIndices = new Set(current.correctOptionIndices ?? []);
+    const ok = selectedMcIndices.size === correctIndices.size &&
+      [...selectedMcIndices].every((i) => correctIndices.has(i));
+    setCorrect(ok);
+    setAnswered(true);
+  }, [current, selectedMcIndices]);
 
   const submitTrueFalse = useCallback((value: boolean) => {
     if (!current || current.questionType !== 'truefalse') return;
@@ -105,6 +142,7 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
       setAnswered(false);
       setCorrect(false);
       setWrittenAnswer('');
+      setSelectedMcIndices(new Set());
       if (index < sessionCards.length - 1) setIndex((i) => i + 1);
       else setSessionComplete(true);
     },
@@ -119,6 +157,7 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
     setAnswered(false);
     setCorrect(false);
     setWrittenAnswer('');
+    setSelectedMcIndices(new Set());
     if (index < sessionCards.length - 1) setIndex((i) => i + 1);
     else setSessionComplete(true);
   }, [current, index, sessionCards.length, recordReview]);
@@ -186,7 +225,7 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                   Term
                 </p>
                 <div
-                  className="text-lg font-medium text-[var(--color-text)] study-content"
+                  className="text-xl font-medium text-[var(--color-text)] study-content"
                   dangerouslySetInnerHTML={{ __html: current.card.term }}
                 />
               </div>
@@ -224,23 +263,58 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="flex-1 h-px bg-[var(--color-border)]" />
-                    <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">Choose your answer</span>
+                    <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">
+                      {isMultiCorrect ? 'Choose ALL correct answers' : 'Choose your answer'}
+                    </span>
                     <div className="flex-1 h-px bg-[var(--color-border)]" />
                   </div>
-                <div className="flex flex-col gap-2">
-                  {current.options.map((opt, i) => (
-                    <motion.div key={i} whileTap={{ scale: 0.98 }} transition={spring}>
-                      <Button
-                        variant="secondary"
-                        className="w-full justify-start text-left h-auto min-h-[44px] py-2"
-                        onClick={() => submitMultiple(i)}
-                        disabled={answered}
-                      >
-                        <div className="study-content" dangerouslySetInnerHTML={{ __html: opt }} />
+                {isMultiCorrect ? (
+                  /* Multi-select: checkboxes + submit button */
+                  <div className="flex flex-col gap-2">
+                    {current.options.map((opt, i) => (
+                      <motion.div key={i} whileTap={{ scale: 0.98 }} transition={spring}>
+                        <button
+                          type="button"
+                          className={`w-full flex items-center gap-3 text-left h-auto min-h-[44px] py-2 px-3 rounded-lg border transition-colors ${
+                            selectedMcIndices.has(i)
+                              ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)]'
+                              : 'bg-[var(--color-surface)] border-[var(--color-border)] hover:bg-[var(--color-primary-muted)]'
+                          }`}
+                          onClick={() => toggleMcSelection(i)}
+                          disabled={answered}
+                        >
+                          <span className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                            selectedMcIndices.has(i) ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-white' : 'border-[var(--color-text-secondary)]'
+                          }`}>
+                            {selectedMcIndices.has(i) && <span className="text-xs">&#10003;</span>}
+                          </span>
+                          <div className="study-content" dangerouslySetInnerHTML={{ __html: opt }} />
+                        </button>
+                      </motion.div>
+                    ))}
+                    {!answered && (
+                      <Button onClick={submitMultiSelect} disabled={selectedMcIndices.size === 0}>
+                        {t('check')}
                       </Button>
-                    </motion.div>
-                  ))}
-                </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Single-select: click to answer */
+                  <div className="flex flex-col gap-2">
+                    {current.options.map((opt, i) => (
+                      <motion.div key={i} whileTap={{ scale: 0.98 }} transition={spring}>
+                        <Button
+                          variant="secondary"
+                          className="w-full justify-start text-left h-auto min-h-[44px] py-2"
+                          onClick={() => submitMultiple(i)}
+                          disabled={answered}
+                        >
+                          <div className="study-content" dangerouslySetInnerHTML={{ __html: opt }} />
+                        </Button>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
                 </div>
               )}
 
@@ -250,7 +324,7 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                     <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
                       Proposed Definition
                     </p>
-                    <div className="text-base text-[var(--color-text)] study-content" dangerouslySetInnerHTML={{ __html: current.options[0] }} />
+                    <div className="text-lg text-[var(--color-text)] study-content" dangerouslySetInnerHTML={{ __html: current.options[0] }} />
                   </div>
                   <div className="text-center">
                     <p className="text-base font-medium text-[var(--color-text)]">
@@ -293,7 +367,15 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                     {correct ? t('correct') : (
                       <>
                         <span>{t('correctAnswer', { answer: '' })}</span>
-                        <div className="study-content mt-1" dangerouslySetInnerHTML={{ __html: current.card.definition }} />
+                        {(current.equivalentAnswersHtml && current.equivalentAnswersHtml.length > 1) ? (
+                          <div className="mt-1 space-y-1">
+                            {current.equivalentAnswersHtml.map((ans, i) => (
+                              <div key={i} className="study-content" dangerouslySetInnerHTML={{ __html: ans }} />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="study-content mt-1" dangerouslySetInnerHTML={{ __html: current.card.definition }} />
+                        )}
                       </>
                     )}
                   </div>

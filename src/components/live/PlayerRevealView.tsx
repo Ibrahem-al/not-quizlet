@@ -6,13 +6,15 @@ interface PlayerRevealViewProps {
   pointsEarned: number;
   myChosenOption: number | null;
   correctOptionIndex: number;
+  correctOptionIndices?: number[];
   options: string[];
 }
 
 const OPTION_COLORS = ['bg-red-500', 'bg-blue-500', 'bg-yellow-400', 'bg-green-500'];
 const OPTION_LABELS = ['A', 'B', 'C', 'D'];
 
-export function PlayerRevealView({ isCorrect, pointsEarned, myChosenOption, correctOptionIndex, options }: PlayerRevealViewProps) {
+export function PlayerRevealView({ isCorrect, pointsEarned, myChosenOption, correctOptionIndex, correctOptionIndices, options }: PlayerRevealViewProps) {
+  const allCorrect = correctOptionIndices ?? [correctOptionIndex];
   return (
     <div className={`min-h-screen flex flex-col items-center justify-center p-6 ${isCorrect ? 'bg-green-500' : 'bg-red-500'}`}>
       <motion.div
@@ -45,21 +47,25 @@ export function PlayerRevealView({ isCorrect, pointsEarned, myChosenOption, corr
 
         {/* Correct answer highlight */}
         <div className="w-full space-y-2">
-          <p className="text-white/80 text-sm font-medium">Correct answer:</p>
-          <div className={`${OPTION_COLORS[correctOptionIndex]} rounded-2xl p-4 text-white flex items-center gap-3 ring-4 ring-white`}>
-            <span className="font-black text-lg w-6">{OPTION_LABELS[correctOptionIndex]}</span>
-            <div
-              className="flex-1 text-sm font-medium text-left line-clamp-2"
-              dangerouslySetInnerHTML={{ __html: options[correctOptionIndex] }}
-            />
-            <CheckCircle className="w-5 h-5 shrink-0" />
-          </div>
+          <p className="text-white/80 text-sm font-medium">
+            {allCorrect.length > 1 ? 'Correct answers:' : 'Correct answer:'}
+          </p>
+          {allCorrect.map((idx) => (
+            <div key={idx} className={`${OPTION_COLORS[idx]} rounded-2xl p-4 text-white flex items-center gap-3 ring-4 ring-white`}>
+              <span className="font-black text-lg w-6">{OPTION_LABELS[idx]}</span>
+              <div
+                className="flex-1 text-base font-medium text-left line-clamp-2"
+                dangerouslySetInnerHTML={{ __html: options[idx] }}
+              />
+              <CheckCircle className="w-5 h-5 shrink-0" />
+            </div>
+          ))}
 
-          {!isCorrect && myChosenOption !== null && myChosenOption >= 0 && (
+          {!isCorrect && myChosenOption !== null && myChosenOption >= 0 && !allCorrect.includes(myChosenOption) && (
             <div className="bg-white/20 rounded-2xl p-4 text-white flex items-center gap-3">
               <span className="font-black text-lg w-6">{OPTION_LABELS[myChosenOption]}</span>
               <div
-                className="flex-1 text-sm font-medium text-left line-clamp-2"
+                className="flex-1 text-base font-medium text-left line-clamp-2"
                 dangerouslySetInnerHTML={{ __html: options[myChosenOption] }}
               />
               <XCircle className="w-5 h-5 shrink-0 opacity-60" />

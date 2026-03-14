@@ -44,7 +44,7 @@ export function PlayerQuestionView({ question, myAnswer, timerMs, onAnswer }: Pl
               />
             )}
             <div
-              className="text-lg font-bold text-[var(--color-text)]"
+              className="text-xl font-bold text-[var(--color-text)]"
               dangerouslySetInnerHTML={{ __html: question.term }}
             />
           </div>
@@ -70,7 +70,7 @@ export function PlayerQuestionView({ question, myAnswer, timerMs, onAnswer }: Pl
               >
                 <span className="font-black text-xl">{col.label}</span>
                 <div
-                  className="text-sm font-medium line-clamp-2 mt-1"
+                  className="text-base font-medium line-clamp-2 mt-1"
                   dangerouslySetInnerHTML={{ __html: opt }}
                 />
               </button>

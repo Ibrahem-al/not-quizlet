@@ -34,9 +34,9 @@ export function useAutoSave() {
     const currentSet = useEditorStore.getState().set;
     if (!currentSet || !useEditorStore.getState().unsavedChanges) return;
 
-    runValidation(currentSet);
+    runValidation(currentSet, 'save');
     if (!useValidationStore.getState().canSave()) {
-      showToast('error', 'Fix validation errors before saving (e.g. empty terms or too many characters).', 0);
+      showToast('error', 'Fix validation errors before saving (e.g. too many characters).', 0);
       return;
     }
 

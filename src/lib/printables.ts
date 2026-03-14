@@ -1,5 +1,7 @@
 import type { Card } from '../types';
 import { shuffle } from './algorithms';
+import { buildEquivalenceGroups, getWrongOptionPool, getCorrectAnswersNormSet, isDistinctAnswer, getEquivalentAnswers, findCorrectOptionIndices, buildMultiAnswerOptions } from './equivalence';
+import { normalizeContent } from './contentHelpers';
 
 export type AnswerDirection = 'term-to-definition' | 'definition-to-term' | 'both';
 
@@ -12,6 +14,7 @@ export interface PrintConfig {
     multiple: boolean;
     truefalse: boolean;
   };
+  multiAnswerMC?: boolean;
 }
 
 // --- Shared helpers ---
@@ -456,13 +459,27 @@ export async function generateLineMatchingPDF(cards: Card[], title: string, conf
     }
   }
 
-  // Answer Key page
+  // Answer Key page — with equivalence support
+  const groups = buildEquivalenceGroups(selectedCards);
   doc.addPage();
   let y = addHeader(doc, 'Answer Key — Line Matching', title);
   doc.setFontSize(11);
   for (let i = 0; i < items.length; i++) {
     y = checkPageBreak(doc, y, 8);
-    doc.text(`${i + 1} = ${answerKey[i]}`, MARGIN, y);
+    // Find all valid matching letters for this item (considering equivalent definitions)
+    const card = selectedCards[i];
+    const dir = config.direction === 'both' ? 'term-to-definition' : config.direction;
+    const answerWith = dir === 'definition-to-term' ? 'term' : 'definition';
+    const equivAnswers = getEquivalentAnswers(card, answerWith, groups);
+    const altLetters: string[] = [];
+    shuffledDefs.forEach((def, letterIdx) => {
+      const defText = def.def.text || '';
+      if (equivAnswers.some((ea) => normalizeContent(ea) === normalizeContent(defText)) && toLetter(letterIdx) !== answerKey[i]) {
+        altLetters.push(toLetter(letterIdx));
+      }
+    });
+    const altSuffix = altLetters.length > 0 ? ` (or ${altLetters.join(', ')})` : '';
+    doc.text(`${i + 1} = ${answerKey[i]}${altSuffix}`, MARGIN, y);
     y += 7;
   }
 
@@ -481,6 +498,8 @@ interface TestQuestion {
   options?: string[];
   optionImages?: string[][];
   correctOptionIndex?: number;
+  correctOptionIndices?: number[];
+  equivalentAnswers?: string[];
   shownAnswer?: string;
   shownAnswerImages?: string[];
   isTrue?: boolean;
@@ -504,6 +523,8 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
     selectedCards.push(...shuffle([...pool]).slice(0, remainder));
     selectedCards = shuffle(selectedCards);
   }
+
+  const groups = buildEquivalenceGroups(cards);
 
   const hasMC = pool.length >= 4;
   const hasTF = pool.length >= 2;
@@ -531,16 +552,37 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
     const answerContent = await parseCardSideAsync(swapped ? card.term : card.definition, swapped ? undefined : card.imageData);
     const q: TestQuestion = { type, card, promptContent, answerContent, swapped };
 
+    const answerWith = swapped ? 'term' : 'definition';
+    q.equivalentAnswers = getEquivalentAnswers(card, answerWith, groups);
+
     if (type === 'mc') {
-      const others = shuffle(selectedCards.filter((c) => c.id !== card.id)).slice(0, 3);
-      const wrongAnswers = await Promise.all(others.map((c) => parseCardSideAsync(swapped ? c.term : c.definition, swapped ? undefined : c.imageData)));
-      const allEntries = shuffle([
-        { text: answerContent.text || (answerContent.images.length > 0 ? '(see image)' : '—'), imgs: answerContent.images, isCorrect: true },
-        ...wrongAnswers.map((d) => ({ text: d.text || (d.images.length > 0 ? '(see image)' : '—'), imgs: d.images, isCorrect: false })),
-      ]);
+      let allEntries: { text: string; imgs: string[]; isCorrect: boolean }[];
+      if (config.multiAnswerMC) {
+        const multiOptions = buildMultiAnswerOptions(card, cards, answerWith, groups);
+        const parsedOptions = await Promise.all(multiOptions.map((html) => parseCardSideAsync(html)));
+        const correctNorm = getCorrectAnswersNormSet(card, answerWith, groups);
+        allEntries = parsedOptions.map((parsed) => ({
+          text: parsed.text || (parsed.images.length > 0 ? '(see image)' : '—'),
+          imgs: parsed.images,
+          isCorrect: correctNorm.has(normalizeContent(parsed.text)),
+        }));
+      } else {
+        const wrongPool = getWrongOptionPool(card, cards, answerWith, groups);
+        const others = shuffle(wrongPool).slice(0, 3);
+        const wrongAnswers = await Promise.all(others.map((c) => parseCardSideAsync(swapped ? c.term : c.definition, swapped ? undefined : c.imageData)));
+        allEntries = shuffle([
+          { text: answerContent.text || (answerContent.images.length > 0 ? '(see image)' : '—'), imgs: answerContent.images, isCorrect: true },
+          ...wrongAnswers.map((d) => ({ text: d.text || (d.images.length > 0 ? '(see image)' : '—'), imgs: d.images, isCorrect: false })),
+        ]);
+      }
       q.options = allEntries.map((e) => e.text);
       q.optionImages = allEntries.map((e) => e.imgs);
       q.correctOptionIndex = allEntries.findIndex((e) => e.isCorrect);
+      // Find all correct option indices (for equivalent answers)
+      const correctNorm = getCorrectAnswersNormSet(card, answerWith, groups);
+      q.correctOptionIndices = allEntries
+        .map((e, idx) => e.isCorrect || correctNorm.has(normalizeContent(e.text)) ? idx : -1)
+        .filter((idx) => idx >= 0);
     } else if (type === 'tf') {
       const isTrue = Math.random() > 0.5;
       if (isTrue) {
@@ -548,11 +590,22 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
         q.shownAnswerImages = answerContent.images;
         q.isTrue = true;
       } else {
-        const wrongCard = shuffle(selectedCards.filter((c) => c.id !== card.id))[0];
-        const wrongAnswer = await parseCardSideAsync(swapped ? wrongCard.term : wrongCard.definition, swapped ? undefined : wrongCard.imageData);
-        q.shownAnswer = wrongAnswer.text || (wrongAnswer.images.length > 0 ? '(see image)' : '—');
-        q.shownAnswerImages = wrongAnswer.images;
-        q.isTrue = false;
+        const correctNorm = getCorrectAnswersNormSet(card, answerWith, groups);
+        const distinctOthers = cards.filter((c) => {
+          const content = swapped ? c.term : c.definition;
+          return isDistinctAnswer(content, correctNorm);
+        });
+        if (distinctOthers.length > 0) {
+          const wrongCard = shuffle(distinctOthers)[0];
+          const wrongAnswer = await parseCardSideAsync(swapped ? wrongCard.term : wrongCard.definition, swapped ? undefined : wrongCard.imageData);
+          q.shownAnswer = wrongAnswer.text || (wrongAnswer.images.length > 0 ? '(see image)' : '—');
+          q.shownAnswerImages = wrongAnswer.images;
+          q.isTrue = false;
+        } else {
+          q.shownAnswer = answerContent.text || (answerContent.images.length > 0 ? '(see image)' : '—');
+          q.shownAnswerImages = answerContent.images;
+          q.isTrue = true;
+        }
       }
     }
     return q;
@@ -673,11 +726,16 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
     const q = questions[i];
     const ansLabel = q.answerContent.text || (q.answerContent.images.length > 0 ? '(see image)' : '—');
     const ansImgs = q.answerContent.images;
+    const equivs = q.equivalentAnswers ?? [];
+    const otherAnswers = equivs.filter((a) => a !== ansLabel);
+    const equivSuffix = otherAnswers.length > 0 ? ` (or ${otherAnswers.join(', ')})` : '';
     let answer = '';
     if (q.type === 'written') {
-      answer = ansLabel;
+      answer = ansLabel + equivSuffix;
     } else if (q.type === 'mc') {
-      answer = `${['a', 'b', 'c', 'd'][q.correctOptionIndex!]}) ${ansLabel}`;
+      const indices = q.correctOptionIndices ?? (q.correctOptionIndex != null ? [q.correctOptionIndex] : []);
+      const letters = indices.map((idx) => ['a', 'b', 'c', 'd'][idx]).join(', ');
+      answer = `${letters}) ${ansLabel}${equivSuffix}`;
     } else if (q.type === 'tf') {
       answer = q.isTrue ? 'True' : 'False';
     }
@@ -1197,6 +1255,7 @@ export async function generateCutAndGluePDF(cards: Card[], title: string, config
   doc.setTextColor(0, 0, 0);
 
   // ── Answer Key page ──
+  const cutGroups = buildEquivalenceGroups(selectedCards);
   doc.addPage();
   let y = addHeader(doc, 'Answer Key — Cut & Glue', title);
   doc.setFontSize(10);
@@ -1204,7 +1263,13 @@ export async function generateCutAndGluePDF(cards: Card[], title: string, config
     y = checkPageBreak(doc, y, 8);
     const termLabel = items[i].term.text || '(image)';
     const defLabel = items[i].definition.text || '(image)';
-    const ansText = `${i + 1}. ${termLabel} = ${defLabel}`;
+    const card = selectedCards[i];
+    const dir = config.direction === 'both' ? 'term-to-definition' : config.direction;
+    const answerWith = dir === 'definition-to-term' ? 'term' : 'definition';
+    const equivAnswers = getEquivalentAnswers(card, answerWith, cutGroups);
+    const otherAnswers = equivAnswers.filter((a) => normalizeContent(a) !== normalizeContent(defLabel));
+    const equivSuffix = otherAnswers.length > 0 ? ` (or ${otherAnswers.join(', ')})` : '';
+    const ansText = `${i + 1}. ${termLabel} = ${defLabel}${equivSuffix}`;
     const h = await pdfText(doc, ansText, MARGIN, y, CONTENT_W, 10);
     y += h + 3;
   }

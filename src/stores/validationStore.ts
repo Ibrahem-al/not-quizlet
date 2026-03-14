@@ -10,6 +10,7 @@ import {
   validateSet,
   type ValidationError,
   type SetValidationError,
+  type ValidationContext,
 } from '../lib/validation';
 
 export interface GlobalWarning {
@@ -35,7 +36,7 @@ interface ValidationState {
 
 interface ValidationActions {
   /** Run validation for the current editor set; updates cardErrors and setValidation */
-  runValidation: (set: StudySet | null) => void;
+  runValidation: (set: StudySet | null, context?: ValidationContext) => void;
   /** Validate a single card (e.g. for inline display) */
   validateSingleCard: (card: Card) => ValidationError[];
   /** Whether the current validated set can be saved (call runValidation first). */
@@ -57,14 +58,14 @@ const initialState: ValidationState = {
 export const useValidationStore = create<ValidationState & ValidationActions>((set, get) => ({
   ...initialState,
 
-  runValidation: (studySet) => {
+  runValidation: (studySet, context = 'save') => {
     if (!studySet) {
       set({ cardErrors: new Map(), setValidation: null, globalWarnings: [] });
       return;
     }
     const cardErrors = new Map<string, ValidationError[]>();
     for (const card of studySet.cards) {
-      const result = validateCard(card);
+      const result = validateCard(card, context);
       if (result.errors.length > 0) {
         cardErrors.set(card.id, result.errors);
       }

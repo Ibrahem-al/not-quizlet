@@ -6,12 +6,14 @@ export interface MatchTileData {
   cardId: string;
   text: string;
   type: 'term' | 'definition';
+  tileIndex: number;
 }
 
 interface MatchTileProps {
   cardId: string;
   text: string;
   type: 'term' | 'definition';
+  tileIndex: number;
   matched: boolean;
   onDrop?: (dragged: MatchTileData, target: MatchTileData) => void;
   draggable?: boolean;
@@ -21,12 +23,13 @@ export function MatchTile({
   cardId,
   text,
   type,
+  tileIndex,
   matched,
   onDrop,
   draggable = true,
 }: MatchTileProps) {
   const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData('application/json', JSON.stringify({ cardId, text, type }));
+    e.dataTransfer.setData('application/json', JSON.stringify({ cardId, text, type, tileIndex }));
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -34,8 +37,8 @@ export function MatchTile({
     e.preventDefault();
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json')) as MatchTileData;
-      if (data.cardId === cardId && data.type === type) return; // same tile
-      onDrop?.(data, { cardId, text, type });
+      if (data.tileIndex === tileIndex) return; // same tile
+      onDrop?.(data, { cardId, text, type, tileIndex });
     } catch {
       // ignore
     }
@@ -66,7 +69,7 @@ export function MatchTile({
       onDragOver={handleDragOver}
     >
       <motion.div
-        className="text-sm text-[var(--color-text)] line-clamp-2 text-center study-content"
+        className="text-base text-[var(--color-text)] line-clamp-2 text-center study-content"
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         transition={spring}

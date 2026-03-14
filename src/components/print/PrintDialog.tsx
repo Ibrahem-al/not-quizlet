@@ -79,6 +79,7 @@ export function PrintDialog({ isOpen, onClose, cards, setTitle }: PrintDialogPro
   const [testWritten, setTestWritten] = useState(true);
   const [testMultiple, setTestMultiple] = useState(true);
   const [testTrueFalse, setTestTrueFalse] = useState(true);
+  const [testMultiAnswerMC, setTestMultiAnswerMC] = useState(false);
   const [testQuestionCount, setTestQuestionCount] = useState(Math.min(20, cards.length));
   const [testDirection, setTestDirection] = useState<AnswerDirection>('term-to-definition');
 
@@ -128,6 +129,7 @@ export function PrintDialog({ isOpen, onClose, cards, setTitle }: PrintDialogPro
       direction: testDirection,
       testQuestionCount,
       testQuestionTypes: { written: testWritten, multiple: testMultiple, truefalse: testTrueFalse },
+      multiAnswerMC: testMultiAnswerMC,
     };
     setGenerating('test');
     try {
@@ -228,6 +230,22 @@ export function PrintDialog({ isOpen, onClose, cards, setTitle }: PrintDialogPro
                           />
                           <span className="text-sm text-[var(--color-text)]">True / False</span>
                         </label>
+                        {testMultiple && (
+                          <label className="flex items-center gap-2 cursor-pointer ml-4">
+                            <input
+                              type="checkbox"
+                              checked={testMultiAnswerMC}
+                              onChange={(e) => setTestMultiAnswerMC(e.target.checked)}
+                              className="accent-[var(--color-primary)]"
+                            />
+                            <span className="text-sm text-[var(--color-text)]">Multi-answer MC</span>
+                          </label>
+                        )}
+                        {testMultiAnswerMC && testMultiple && (
+                          <p className="text-xs text-[var(--color-text-tertiary)] ml-4">
+                            MC questions may have multiple correct answers shown in the answer key.
+                          </p>
+                        )}
                       </div>
                     </div>
 

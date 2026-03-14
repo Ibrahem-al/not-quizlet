@@ -11,7 +11,7 @@ export interface MemoryGameState {
   phase: GamePhase;
   tiles: MemoryTile[];
   flippedIndices: number[];   // currently face-up (max 2)
-  matchedCardIds: Set<string>; // card IDs that have been matched
+  matchedTileIndices: Set<number>; // tile indices that have been matched
   moves: number;               // total flip-pairs attempted
   startTime: number;
   endTime: number | null;

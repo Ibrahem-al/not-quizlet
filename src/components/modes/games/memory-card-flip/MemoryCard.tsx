@@ -49,7 +49,7 @@ export function MemoryCard({ content, type, isFlipped, isMatched, onClick }: Mem
             {type === 'term' ? 'T' : 'D'}
           </span>
           <div
-            className="text-xs sm:text-sm text-[var(--color-text)] text-center overflow-y-auto w-full flex-1 min-h-0 [&_img]:max-w-full [&_img]:max-h-[50px] [&_img]:object-contain [&_img]:mx-auto [&_img]:block"
+            className="text-sm sm:text-base text-[var(--color-text)] text-center overflow-y-auto w-full flex-1 min-h-0 [&_img]:max-w-full [&_img]:max-h-[50px] [&_img]:object-contain [&_img]:mx-auto [&_img]:block"
             dangerouslySetInnerHTML={{ __html: content }}
           />
         </div>

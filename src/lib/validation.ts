@@ -6,6 +6,11 @@
 import type { Card, StudySet } from '../types';
 
 // ---------------------------------------------------------------------------
+// Context
+// ---------------------------------------------------------------------------
+export type ValidationContext = 'save' | 'study';
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 export const MAX_TERM_LENGTH = 500;
@@ -83,14 +88,14 @@ export function hasContent(card: Card): boolean {
 }
 
 /** Check if term has content (text or image). */
-function hasTermContent(card: Card): boolean {
+export function hasTermContent(card: Card): boolean {
   const termText = stripHtml(card.term);
   const termHasImage = hasImageInHtml(card.term);
   return termText.length > 0 || termHasImage;
 }
 
 /** Check if definition has content (text or image). */
-function hasDefinitionContent(card: Card): boolean {
+export function hasDefinitionContent(card: Card): boolean {
   const defText = stripHtml(card.definition);
   const defHasImage = hasImageInHtml(card.definition);
   const hasImage = Boolean(card.imageData);
@@ -135,15 +140,15 @@ const MESSAGES: Record<CardValidationCode, string> = {
   ALL_CAPS_DETECTED: 'Convert to sentence case?',
 };
 
-export function validateCard(card: Card): ValidationResult {
+export function validateCard(card: Card, context: ValidationContext = 'study'): ValidationResult {
   const errors: ValidationError[] = [];
   const termPlain = stripHtml(card.term);
   const defPlain = stripHtml(card.definition);
   const termLen = termPlain.length;
   const defLen = defPlain.length;
 
-  // --- Hard: EMPTY_CONTENT (both empty, no media)
-  if (!hasContent(card)) {
+  // --- Hard (study only): EMPTY_CONTENT (both empty, no media)
+  if (context === 'study' && !hasContent(card)) {
     errors.push({
       code: 'EMPTY_CONTENT',
       severity: 'hard',
@@ -152,8 +157,8 @@ export function validateCard(card: Card): ValidationResult {
     return { valid: false, errors };
   }
 
-  // --- Hard: EMPTY_TERM_CONTENT (term must have text or image)
-  if (!hasTermContent(card)) {
+  // --- Hard (study only): EMPTY_TERM_CONTENT (term must have text or image)
+  if (context === 'study' && !hasTermContent(card)) {
     errors.push({
       code: 'EMPTY_TERM_CONTENT',
       severity: 'hard',
@@ -161,8 +166,8 @@ export function validateCard(card: Card): ValidationResult {
     });
   }
 
-  // --- Hard: EMPTY_DEFINITION_CONTENT (definition must have text or image)
-  if (!hasDefinitionContent(card)) {
+  // --- Hard (study only): EMPTY_DEFINITION_CONTENT (definition must have text or image)
+  if (context === 'study' && !hasDefinitionContent(card)) {
     errors.push({
       code: 'EMPTY_DEFINITION_CONTENT',
       severity: 'hard',
@@ -295,7 +300,8 @@ export function validateSet(set: StudySet | null): SetValidation {
     });
   }
 
-  // --- Block: DUPLICATE_TERMS (case-insensitive identical terms)
+  // --- Warning: DUPLICATE_TERMS (case-insensitive identical terms)
+  // Duplicate terms are allowed — they create equivalence groups for answer matching.
   const termToIds = new Map<string, string[]>();
   for (const c of cards) {
     const t = stripHtml(c.term).toLowerCase().trim();
@@ -311,8 +317,8 @@ export function validateSet(set: StudySet | null): SetValidation {
   if (duplicateIds.length > 0) {
     errors.push({
       code: 'DUPLICATE_TERMS',
-      severity: 'block',
-      message: 'Some cards have the same term. Consider merging or making terms unique.',
+      severity: 'warning',
+      message: 'Some cards share the same term — they\'ll be treated as equivalent answers.',
       cardIds: duplicateIds,
     });
   }

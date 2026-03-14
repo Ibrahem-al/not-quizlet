@@ -6,6 +6,7 @@ export interface LiveQuestion {
   imageData?: string;
   options: string[];      // 4 HTML strings (definitions), shuffled
   correctOptionIndex: number;
+  correctOptionIndices: number[];
   timeLimitMs: number;
 }
 
@@ -42,6 +43,7 @@ export interface TimerSyncPayload {
 
 export interface AnswerRevealPayload {
   correctOptionIndex: number;
+  correctOptionIndices: number[];
   perPlayer: Record<string, { chosenOption: number; isCorrect: boolean; pointsEarned: number }>;
 }
 

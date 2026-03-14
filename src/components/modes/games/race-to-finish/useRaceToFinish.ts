@@ -1,5 +1,8 @@
-import { useState, useCallback } from 'react';
-import { shuffle, gradeWrittenAnswer } from '../../../../lib/algorithms';
+import { useState, useCallback, useMemo } from 'react';
+import { shuffle } from '../../../../lib/algorithms';
+import { getTextContent, isImageOnly, hasTextContent } from '../../../../lib/contentHelpers';
+import { buildEquivalenceGroups, getEquivalentAnswers, getWrongOptionPool, getCorrectAnswersNormSet, isDistinctAnswer, findCorrectOptionIndices, gradeWrittenAnswerMulti, buildMultiAnswerOptions } from '../../../../lib/equivalence';
+import type { EquivalenceGroups } from '../../../../lib/equivalence';
 import type { Card } from '../../../../types';
 import type {
   RaceConfig,
@@ -11,23 +14,6 @@ import type {
   QuestionType,
 } from './types';
 import { PLAYER_THEMES } from './types';
-
-/* ── helpers (same logic as TestMode / BlockBuilder) ── */
-
-function isImageOnly(content: string): boolean {
-  if (!content) return false;
-  const withoutImages = content.replace(/<img[^>]*>/gi, '');
-  const textContent = withoutImages.replace(/<[^>]*>/g, '').trim();
-  return textContent === '' && content.includes('<img');
-}
-
-function getTextContent(content: string): string {
-  return content.replace(/<[^>]*>/g, '').trim();
-}
-
-function hasTextContent(content: string): boolean {
-  return getTextContent(content).length > 0;
-}
 
 /* ── board generation ── */
 
@@ -94,6 +80,7 @@ function generateShortcuts(pathLength: number): Shortcut[] {
 function generateQuestion(
   cards: Card[],
   config: RaceConfig,
+  groups: EquivalenceGroups,
 ): RaceQuestion {
   const types: QuestionType[] = [];
   if (config.questionTypes.written) types.push('written');
@@ -122,15 +109,22 @@ function generateQuestion(
 
   const type = available[Math.floor(Math.random() * available.length)];
   const prompt = answerWith === 'definition' ? card.term : card.definition;
+  const equivalentAnswers = getEquivalentAnswers(card, answerWith, groups);
 
   if (type === 'multiple') {
-    const others = cards.filter((c) => c.id !== card.id);
-    const wrong = shuffle(others)
-      .slice(0, 3)
-      .map((c) => (answerWith === 'term' ? c.term : c.definition));
-    const correct = answerWith === 'term' ? card.term : card.definition;
-    const options = shuffle([correct, ...wrong]);
-    return { card, type, prompt, options, correctOption: options.indexOf(correct), answerWith };
+    let options: string[];
+    if (config.multiAnswerMC) {
+      options = buildMultiAnswerOptions(card, cards, answerWith, groups);
+    } else {
+      const wrongPool = getWrongOptionPool(card, cards, answerWith, groups);
+      const wrong = shuffle(wrongPool)
+        .slice(0, 3)
+        .map((c) => (answerWith === 'term' ? c.term : c.definition));
+      const correct = answerWith === 'term' ? card.term : card.definition;
+      options = shuffle([correct, ...wrong]);
+    }
+    const correctOptionIndices = findCorrectOptionIndices(options, card, answerWith, groups);
+    return { card, type, prompt, options, correctOption: correctOptionIndices[0] ?? 0, correctOptionIndices, equivalentAnswers, answerWith };
   } else if (type === 'truefalse') {
     const isTrue = Math.random() > 0.5;
     const answer = answerWith === 'term' ? card.term : card.definition;
@@ -138,25 +132,37 @@ function generateQuestion(
     if (isTrue) {
       shown = answer;
     } else if (cards.length > 1) {
-      const other = shuffle(cards.filter((c) => c.id !== card.id))[0];
-      shown = answerWith === 'term' ? other.term : other.definition;
+      const correctNorm = getCorrectAnswersNormSet(card, answerWith, groups);
+      const distinctOthers = cards.filter((c) => {
+        const content = answerWith === 'term' ? c.term : c.definition;
+        return isDistinctAnswer(content, correctNorm);
+      });
+      if (distinctOthers.length > 0) {
+        const other = shuffle(distinctOthers)[0];
+        shown = answerWith === 'term' ? other.term : other.definition;
+      } else {
+        shown = answer;
+        return { card, type, prompt, options: [shown], isTrue: true, equivalentAnswers, answerWith };
+      }
     } else {
       shown = answer;
     }
-    return { card, type, prompt, options: [shown], isTrue, answerWith };
+    return { card, type, prompt, options: [shown], isTrue, equivalentAnswers, answerWith };
   } else {
-    return { card, type, prompt, answerWith };
+    return { card, type, prompt, equivalentAnswers, answerWith };
   }
 }
 
 /* ── hook ── */
 
 export function useRaceToFinish(cards: Card[]) {
+  const groups = useMemo(() => buildEquivalenceGroups(cards), [cards]);
   const [config, setConfig] = useState<RaceConfig>({
     playerCount: 1,
     pathLength: 20,
     answerDirection: 'term-to-definition',
     questionTypes: { written: true, multiple: true, truefalse: true },
+    multiAnswerMC: false,
   });
 
   const [gameState, setGameState] = useState<RaceGameState>({
@@ -197,7 +203,7 @@ export function useRaceToFinish(cards: Card[]) {
       if (boardCells[s.from]) boardCells[s.from].shortcutTo = s.to;
     });
 
-    const q = generateQuestion(cards, config);
+    const q = generateQuestion(cards, config, groups);
     setCurrentQuestion(q);
     setLastAnswerCorrect(null);
 
@@ -214,7 +220,7 @@ export function useRaceToFinish(cards: Card[]) {
       layoutSeed: Date.now(),
       pendingMove: null,
     });
-  }, [cards, config]);
+  }, [cards, config, groups]);
 
   /* answer submitted — check correctness */
   const handleAnswerResult = useCallback(
@@ -236,23 +242,22 @@ export function useRaceToFinish(cards: Card[]) {
             const nextPlayer = (s.currentPlayerIndex + 1) % s.players.length;
             return { ...s, currentPlayerIndex: nextPlayer, phase: 'question' };
           });
-          const q = generateQuestion(cards, config);
+          const q = generateQuestion(cards, config, groups);
           setCurrentQuestion(q);
           setLastAnswerCorrect(null);
         }, 1500);
       }
     },
-    [cards, config],
+    [cards, config, groups],
   );
 
   const submitWrittenAnswer = useCallback(
     (input: string) => {
       if (!currentQuestion) return;
-      const correct =
-        currentQuestion.answerWith === 'term'
-          ? currentQuestion.card.term
-          : currentQuestion.card.definition;
-      const ok = gradeWrittenAnswer(input, getTextContent(correct));
+      const answers = currentQuestion.equivalentAnswers ?? [getTextContent(
+        currentQuestion.answerWith === 'term' ? currentQuestion.card.term : currentQuestion.card.definition
+      )];
+      const ok = gradeWrittenAnswerMulti(answers, input);
       handleAnswerResult(ok);
     },
     [currentQuestion, handleAnswerResult],
@@ -261,7 +266,8 @@ export function useRaceToFinish(cards: Card[]) {
   const submitMultipleChoice = useCallback(
     (optionIndex: number) => {
       if (!currentQuestion || currentQuestion.type !== 'multiple') return;
-      handleAnswerResult(optionIndex === currentQuestion.correctOption);
+      const indices = currentQuestion.correctOptionIndices ?? (currentQuestion.correctOption !== undefined ? [currentQuestion.correctOption] : []);
+      handleAnswerResult(indices.includes(optionIndex));
     },
     [currentQuestion, handleAnswerResult],
   );
@@ -346,13 +352,13 @@ export function useRaceToFinish(cards: Card[]) {
     setTimeout(() => {
       setGameState((s) => {
         if (s.phase === 'finished') return s;
-        const q = generateQuestion(cards, config);
+        const q = generateQuestion(cards, config, groups);
         setCurrentQuestion(q);
         setLastAnswerCorrect(null);
         return s;
       });
     }, 300);
-  }, [cards, config]);
+  }, [cards, config, groups]);
 
   /* reset */
   const resetGame = useCallback(() => {

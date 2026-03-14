@@ -5,21 +5,7 @@ import { X, RotateCcw, Trophy } from 'lucide-react';
 import { Button } from '../ui';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import type { Card } from '../../types';
-
-/** Extract plain text from HTML string */
-function getPlainText(html: string): string {
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  return (div.textContent || div.innerText || '').trim();
-}
-
-/** Check if content is only images with no text */
-function isImageOnly(content: string): boolean {
-  if (!content) return false;
-  const withoutImages = content.replace(/<img[^>]*>/gi, '');
-  const textContent = withoutImages.replace(/<[^>]*>/g, '').trim();
-  return textContent === '' && content.includes('<img');
-}
+import { getTextContent, isImageOnly } from '../../lib/contentHelpers';
 
 /** Extract all image srcs from HTML content */
 function extractAllImageSrcs(html: string): string[] {
@@ -76,7 +62,7 @@ function getCardDisplay(card: Card): {
   return {
     prompt: card.term, promptLabel: 'Term',
     answer: card.definition, answerLabel: 'Definition',
-    spinnerLabel: getPlainText(card.term), spinnerImageSrcs: [],
+    spinnerLabel: getTextContent(card.term), spinnerImageSrcs: [],
   };
 }
 

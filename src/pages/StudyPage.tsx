@@ -9,6 +9,8 @@ import { AppLayout } from '../components/layout/AppLayout';
 import { Button } from '../components/ui';
 import { useStudySet } from '../hooks/useStudySet';
 import { gameRegistry } from '../config/gameRegistry';
+import { hasContent, hasTermContent, hasDefinitionContent } from '../lib/validation';
+import { useCardFilterStore } from '../stores/cardFilterStore';
 
 type Mode = 'flashcards' | 'learn' | 'match' | 'test';
 
@@ -29,6 +31,7 @@ export function StudyPage() {
   const { id, mode } = useParams<{ id: string; mode: string }>();
   const navigate = useNavigate();
   const set = useStudySet(id);
+  const selectedIds = useCardFilterStore((s) => s.getSelectedIds(id ?? ''));
 
   const exit = () => navigate(`/sets/${id}`);
 
@@ -36,7 +39,15 @@ export function StudyPage() {
     return <StudyError message="Set not found." onBack={() => navigate('/')} />;
   }
 
-  const cards = set.cards;
+  // Filter out blank and incomplete cards (missing term or definition)
+  let cards = set.cards.filter(
+    (c) => hasContent(c) && hasTermContent(c) && hasDefinitionContent(c)
+  );
+
+  // Apply user card filter (if active)
+  if (selectedIds) {
+    cards = cards.filter((c) => selectedIds.has(c.id));
+  }
 
   switch (mode as Mode) {
     case 'flashcards':

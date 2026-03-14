@@ -13,6 +13,7 @@ export interface RaceConfig {
     multiple: boolean;
     truefalse: boolean;
   };
+  multiAnswerMC: boolean;
 }
 
 export interface Player {
@@ -43,6 +44,8 @@ export interface RaceQuestion {
   prompt: string;
   options?: string[];
   correctOption?: number;
+  correctOptionIndices?: number[];
+  equivalentAnswers?: string[];
   isTrue?: boolean;
   answerWith: 'term' | 'definition';
 }

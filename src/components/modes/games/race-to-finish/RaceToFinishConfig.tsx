@@ -171,6 +171,24 @@ export function RaceToFinishConfig({ config, setConfig, cardCount, onStart, onEx
             />
             <span className="text-[var(--color-text)]">True / False</span>
           </label>
+          {config.questionTypes.multiple && (
+            <label className="flex items-center gap-2 cursor-pointer ml-4">
+              <input
+                type="checkbox"
+                checked={config.multiAnswerMC}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, multiAnswerMC: e.target.checked }))
+                }
+                className="accent-[var(--color-primary)]"
+              />
+              <span className="text-[var(--color-text)]">Multi-answer MC</span>
+            </label>
+          )}
+          {config.multiAnswerMC && config.questionTypes.multiple && (
+            <p className="text-xs text-[var(--color-text-secondary)] ml-4">
+              MC questions may have multiple correct options. Any correct choice scores a point.
+            </p>
+          )}
         </div>
       </div>
 

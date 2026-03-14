@@ -1,5 +1,6 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { shuffle } from '../../../../lib/algorithms';
+import { buildEquivalenceGroups, areMatchableByContent } from '../../../../lib/equivalence';
 import type { Card } from '../../../../types';
 import type { MemoryTile, MemoryGameState } from './types';
 
@@ -14,6 +15,7 @@ function buildTiles(cards: Card[], pairCount: number): MemoryTile[] {
 }
 
 export function useMemoryCardFlip(cards: Card[]) {
+  const groups = useMemo(() => buildEquivalenceGroups(cards), [cards]);
   const maxPairs = cards.length;
   const [pairCount, setPairCount] = useState(() => Math.min(6, cards.length));
   const lockRef = useRef(false);
@@ -22,7 +24,7 @@ export function useMemoryCardFlip(cards: Card[]) {
     phase: 'setup',
     tiles: [],
     flippedIndices: [],
-    matchedCardIds: new Set(),
+    matchedTileIndices: new Set(),
     moves: 0,
     startTime: Date.now(),
     endTime: null,
@@ -35,7 +37,7 @@ export function useMemoryCardFlip(cards: Card[]) {
       phase: 'playing',
       tiles: buildTiles(cards, selectedPairCount),
       flippedIndices: [],
-      matchedCardIds: new Set(),
+      matchedTileIndices: new Set(),
       moves: 0,
       startTime: Date.now(),
       endTime: null,
@@ -47,8 +49,7 @@ export function useMemoryCardFlip(cards: Card[]) {
 
     setGameState((prev) => {
       // Can't flip matched or already flipped tiles
-      const tile = prev.tiles[index];
-      if (prev.matchedCardIds.has(tile.cardId)) return prev;
+      if (prev.matchedTileIndices.has(index)) return prev;
       if (prev.flippedIndices.includes(index)) return prev;
       if (prev.flippedIndices.length >= 2) return prev;
 
@@ -63,7 +64,11 @@ export function useMemoryCardFlip(cards: Card[]) {
       const [firstIdx, secondIdx] = newFlipped;
       const first = prev.tiles[firstIdx];
       const second = prev.tiles[secondIdx];
-      const isMatch = first.cardId === second.cardId && first.type !== second.type;
+      // Content-based matching: must be different types (term vs definition)
+      // and content must be matchable via equivalence groups
+      const termTile = first.type === 'term' ? first : second;
+      const defTile = first.type === 'definition' ? first : second;
+      const isMatch = first.type !== second.type && areMatchableByContent(termTile.content, defTile.content, groups);
       const newMoves = prev.moves + 1;
 
       if (isMatch) {
@@ -71,13 +76,14 @@ export function useMemoryCardFlip(cards: Card[]) {
         lockRef.current = true;
         setTimeout(() => {
           setGameState((s) => {
-            const newMatched = new Set(s.matchedCardIds);
-            newMatched.add(first.cardId);
-            const allDone = newMatched.size === pairCount;
+            const newMatched = new Set(s.matchedTileIndices);
+            newMatched.add(firstIdx);
+            newMatched.add(secondIdx);
+            const allDone = newMatched.size === pairCount * 2;
             return {
               ...s,
               flippedIndices: [],
-              matchedCardIds: newMatched,
+              matchedTileIndices: newMatched,
               phase: allDone ? 'complete' : 'playing',
               endTime: allDone ? Date.now() : null,
             };
@@ -105,7 +111,7 @@ export function useMemoryCardFlip(cards: Card[]) {
       phase: 'setup',
       tiles: [],
       flippedIndices: [],
-      matchedCardIds: new Set(),
+      matchedTileIndices: new Set(),
       moves: 0,
       startTime: Date.now(),
       endTime: null,
