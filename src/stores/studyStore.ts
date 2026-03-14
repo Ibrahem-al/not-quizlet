@@ -3,7 +3,7 @@ import type { StudySet, Card, Settings } from '../types';
 import { uuid, timestamp } from '../lib/utils';
 import * as db from '../lib/db';
 import { useAuthStore } from './authStore';
-import { fetchUserSets, fetchPublicSets, fetchSetById, syncSetToCloud, deleteSetFromCloud } from '../lib/cloudSync';
+import { fetchUserSets, fetchPublicSets, fetchSetById, fetchSetByToken, syncSetToCloud, deleteSetFromCloud } from '../lib/cloudSync';
 
 interface StudyState {
   sets: StudySet[];
@@ -27,6 +27,7 @@ interface StudyActions {
   deleteCard: (setId: string, cardId: string) => Promise<void>;
   replaceSet: (set: StudySet) => Promise<void>;
   fetchSharedSet: (setId: string) => Promise<StudySet | null>;
+  fetchSharedSetByToken: (token: string) => Promise<StudySet | null>;
   loadSettings: () => Promise<void>;
   putSettings: (s: Settings) => Promise<void>;
 }
@@ -249,6 +250,19 @@ export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
       set(state => {
         const newMap = new Map(state.sharedSets);
         newMap.set(setId, fetched);
+        return { sharedSets: newMap };
+      });
+      return fetched;
+    }
+    return null;
+  },
+
+  fetchSharedSetByToken: async (token: string) => {
+    const fetched = await fetchSetByToken(token);
+    if (fetched) {
+      set(state => {
+        const newMap = new Map(state.sharedSets);
+        newMap.set(fetched.id, fetched);
         return { sharedSets: newMap };
       });
       return fetched;

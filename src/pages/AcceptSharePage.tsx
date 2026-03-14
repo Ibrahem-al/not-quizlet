@@ -9,7 +9,6 @@ import {
   BookOpen,
   Share2,
   ExternalLink,
-  Lock,
 } from 'lucide-react';
 import { useSharingStore } from '../stores/sharingStore';
 import { useAuthStore } from '../stores/authStore';
@@ -24,21 +23,27 @@ export default function AcceptSharePage() {
   const { t } = useTranslation();
   const user = useAuthStore((state) => state.user);
   const { acceptShareLink, isLoading, error } = useSharingStore();
+  const fetchSharedSetByToken = useStudyStore((s) => s.fetchSharedSetByToken);
 
   const [shareData, setShareData] = useState<{
     itemType: 'set' | 'folder';
     itemId: string;
   } | null>(null);
-  // Prevent the error state from flashing before the async accept call starts
   const [isInitializing, setIsInitializing] = useState(true);
+  const [anonError, setAnonError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (token && user) {
+    if (!token) {
+      setIsInitializing(false);
+      return;
+    }
+
+    if (user) {
+      // Signed-in flow: accept the link and create sharing_permissions
       acceptShareLink(token)
         .then((data) => {
           if (data) {
             setShareData(data);
-            // Pre-warm the cache so "View Item" navigates instantly without "Set not found"
             if (data.itemType === 'set') {
               useStudyStore.getState().fetchSharedSet(data.itemId).catch(() => {});
             }
@@ -46,13 +51,24 @@ export default function AcceptSharePage() {
         })
         .finally(() => setIsInitializing(false));
     } else {
-      setIsInitializing(false);
+      // Anonymous flow: fetch the set directly via token-based RPC
+      fetchSharedSetByToken(token)
+        .then((fetchedSet) => {
+          if (fetchedSet) {
+            setShareData({ itemType: 'set', itemId: fetchedSet.id });
+          } else {
+            setAnonError(t('linkExpiredOrRevoked'));
+          }
+        })
+        .catch(() => {
+          setAnonError(t('linkExpiredOrRevoked'));
+        })
+        .finally(() => setIsInitializing(false));
     }
-  }, [token, user, acceptShareLink]);
+  }, [token, user, acceptShareLink, fetchSharedSetByToken, t]);
 
   const handleViewItem = () => {
     if (!shareData) return;
-
     if (shareData.itemType === 'set') {
       navigate(`/sets/${shareData.itemId}`);
     } else {
@@ -60,38 +76,7 @@ export default function AcceptSharePage() {
     }
   };
 
-  // Not signed in
-  if (!user) {
-    return (
-      <AppLayout>
-        <div className="min-h-[80vh] flex items-center justify-center p-6">
-          <div className="max-w-md w-full text-center">
-            <div className="w-20 h-20 bg-[var(--color-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Lock className="w-10 h-10 text-[var(--color-primary)]" />
-            </div>
-            <h1 className="text-2xl font-bold text-[var(--color-text-primary)] mb-2">
-              {t('signInRequired')}
-            </h1>
-            <p className="text-[var(--color-text-secondary)] mb-6">
-              {t('signInToAccessSharedItem')}
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link to={`/signin?redirect=/share/${token}`}>
-                <Button size="lg">{t('signIn')}</Button>
-              </Link>
-              <Link to="/">
-                <Button variant="outline" size="lg">
-                  {t('goHome')}
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </AppLayout>
-    );
-  }
-
-  // Loading (initializing OR async accept in flight)
+  // Loading
   if (isInitializing || isLoading) {
     return (
       <AppLayout>
@@ -105,8 +90,9 @@ export default function AcceptSharePage() {
     );
   }
 
-  // Error
-  if (error || !shareData) {
+  // Error (both signed-in and anonymous)
+  const displayError = error || anonError;
+  if (displayError || !shareData) {
     return (
       <AppLayout>
         <div className="min-h-[80vh] flex items-center justify-center p-6">
@@ -118,12 +104,17 @@ export default function AcceptSharePage() {
               {t('invalidLink')}
             </h1>
             <p className="text-[var(--color-text-secondary)] mb-6">
-              {error || t('linkExpiredOrRevoked')}
+              {displayError || t('linkExpiredOrRevoked')}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link to="/">
                 <Button>{t('goHome')}</Button>
               </Link>
+              {!user && (
+                <Link to={`/signin?redirect=/share/${token}`}>
+                  <Button variant="outline">{t('signIn')}</Button>
+                </Link>
+              )}
               <Link to="/explore">
                 <Button variant="outline">{t('explore')}</Button>
               </Link>
@@ -134,7 +125,7 @@ export default function AcceptSharePage() {
     );
   }
 
-  // Success - Link accepted
+  // Success
   return (
     <AppLayout>
       <div className="min-h-[80vh] flex items-center justify-center p-6">
@@ -148,7 +139,7 @@ export default function AcceptSharePage() {
           </div>
 
           <h1 className="text-2xl font-bold text-[var(--color-text-primary)] mb-2">
-            {t('shareAccepted')}
+            {user ? t('shareAccepted') : t('studySet')}
           </h1>
 
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 mb-6">
@@ -165,7 +156,7 @@ export default function AcceptSharePage() {
                   {shareData.itemType === 'set' ? t('studySet') : t('folder')}
                 </p>
                 <p className="text-sm text-[var(--color-text-secondary)]">
-                  {t('addedToYourLibrary')}
+                  {user ? t('addedToYourLibrary') : t('readyToStudy')}
                 </p>
               </div>
             </div>
@@ -176,12 +167,20 @@ export default function AcceptSharePage() {
               <ExternalLink className="w-4 h-4 mr-2" />
               {t('viewItem')}
             </Button>
-            <Link to="/shared">
-              <Button variant="outline" size="lg">
-                <Share2 className="w-4 h-4 mr-2" />
-                {t('viewAllShared')}
-              </Button>
-            </Link>
+            {user ? (
+              <Link to="/shared">
+                <Button variant="outline" size="lg">
+                  <Share2 className="w-4 h-4 mr-2" />
+                  {t('viewAllShared')}
+                </Button>
+              </Link>
+            ) : (
+              <Link to={`/signin?redirect=/share/${token}`}>
+                <Button variant="outline" size="lg">
+                  {t('signInToSave')}
+                </Button>
+              </Link>
+            )}
           </div>
         </motion.div>
       </div>

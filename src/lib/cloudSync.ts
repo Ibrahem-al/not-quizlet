@@ -105,6 +105,19 @@ export async function syncSetToCloud(set: StudySet, userId: string): Promise<voi
   if (error) throw error;
 }
 
+export async function fetchSetByToken(token: string): Promise<StudySet | null> {
+  if (!isSupabaseConfigured() || !supabase) return null;
+  const { data, error } = await supabase.rpc('get_set_by_share_token', {
+    p_token: token,
+  });
+  if (error) {
+    console.warn('[cloudSync] fetchSetByToken failed:', error.message);
+    return null;
+  }
+  if (!data) return null;
+  return fromRow(data as StudySetRow);
+}
+
 export async function deleteSetFromCloud(setId: string): Promise<void> {
   if (!isSupabaseConfigured() || !supabase) return;
   await supabase.from('study_sets').delete().eq('id', setId);
