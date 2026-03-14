@@ -53,6 +53,8 @@ StudyFlow is a Quizlet-like study app built with:
 | `src/components/editor/InputDiacriticsToolbar.tsx` | Auto-showing diacritics toolbar for plain `<input>` elements (learn/test modes) |
 | `src/styles/editor.css` | TipTap + study mode CSS (`.study-content` rules) |
 | `src/styles/globals.css` | Design system CSS variables |
+| `src/stores/cardFilterStore.ts` | Zustand store for session-only card filtering (no persistence) |
+| `src/components/CardFilterModal.tsx` | Modal for selecting which cards to include in study/game modes |
 | `supabase/migrations/` | All SQL migrations (001-005) |
 
 ### Database Schema (Supabase/PostgreSQL)
@@ -1187,3 +1189,32 @@ Bumped all term/definition text sizes up by one step throughout the app.
 - **`src/components/live/PlayerQuestionView.tsx`** — Term and options bumped
 - **`src/components/live/HostRevealView.tsx`** — Term and options bumped
 - **`src/components/live/PlayerRevealView.tsx`** — Options bumped
+
+---
+
+## Step: Card Filter Feature
+
+### What Changed
+Added a card filter that lets users select which cards to include when studying. The filter applies to all study modes (Flashcards, Learn, Match, Test) and all games (Spinner, Block Builder, Memory Card Flip, Race to Finish).
+
+### How It Works
+1. On the SetDetailPage, a **Filter** pill button appears next to the "Choose a study mode" heading.
+2. Clicking it opens a **CardFilterModal** showing all valid cards with checkboxes.
+3. Users can toggle individual cards, use **Select All** / **Deselect All**, and search cards by term or definition.
+4. A minimum of **2 cards** must remain selected (enforced in the UI — checkbox is disabled if unchecking would go below 2).
+5. Clicking **Apply Filter** saves the selection to an in-memory Zustand store.
+6. When the filter is active, the button shows `X / Y cards` with a highlighted primary-color style.
+7. The **StudyPage** reads the filter store and applies it after the standard content-validity filter, so only selected cards reach any study mode or game.
+8. The filter is **session-only** — it resets on browser refresh (no IndexedDB/localStorage persistence). Default state is all cards selected.
+
+### Architecture
+- **`src/stores/cardFilterStore.ts`** — Zustand store (no persistence middleware). Holds `selections: Record<setId, Set<cardId>>`. A missing key means "all cards selected" (no filter active). Exposes `getSelectedIds`, `setSelectedIds`, `clearFilter`, `isFilterActive`.
+- **`src/components/CardFilterModal.tsx`** — Modal UI built with the same patterns as `GamesBrowserModal` and `ConfirmModal` (Framer Motion transitions, backdrop blur, escape key, focus restore). Filters the card list to valid-only cards (same `hasContent && hasTermContent && hasDefinitionContent` check used everywhere). Search input filters the displayed list. Checkbox rows show card number, truncated term, and truncated definition.
+- **`src/pages/SetDetailPage.tsx`** — Added `Filter` import from lucide-react, imported `CardFilterModal` and `useCardFilterStore`. Added `showCardFilter` state, rendered the modal, and added the filter pill button in the study modes header. The `onApply` callback clears the filter if all cards are selected (to avoid a no-op filter entry).
+- **`src/pages/StudyPage.tsx`** — Imported `useCardFilterStore`, reads `getSelectedIds(setId)`. After the standard validity filter, applies `cards.filter(c => selectedIds.has(c.id))` if a filter is active. This single integration point covers all study modes and games since they all receive `cards` from StudyPage.
+
+### Files Changed
+- **`src/stores/cardFilterStore.ts`** *(new)* — Session-only Zustand store for card filter state
+- **`src/components/CardFilterModal.tsx`** *(new)* — Card filter modal component
+- **`src/pages/SetDetailPage.tsx`** — Added filter button + modal integration
+- **`src/pages/StudyPage.tsx`** — Applied card filter before passing cards to modes
