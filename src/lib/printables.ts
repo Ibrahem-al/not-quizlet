@@ -979,3 +979,236 @@ export async function generateMatchingGamePDF(cards: Card[], title: string, conf
   addFooter(doc);
   doc.save(`studyflow-matching-game-${slugify(title)}.pdf`);
 }
+
+// --- 5. Cut & Glue Activity ---
+
+export async function generateCutAndGluePDF(cards: Card[], title: string, config: PrintConfig): Promise<void> {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF('p', 'mm', 'a4');
+
+  const selectedCards = cards.slice(0, Math.min(config.count, cards.length));
+
+  // Resolve direction per-item
+  const items = await Promise.all(selectedCards.map(async (c) => {
+    const dir = config.direction === 'both'
+      ? (Math.random() > 0.5 ? 'term-to-definition' : 'definition-to-term')
+      : config.direction;
+    const swapped = dir === 'definition-to-term';
+    return {
+      term: await parseCardSideAsync(swapped ? c.definition : c.term, swapped ? undefined : c.imageData),
+      definition: await parseCardSideAsync(swapped ? c.term : c.definition, swapped ? c.imageData : undefined),
+    };
+  }));
+
+  // Shuffle terms for cut-out section and build answer key
+  const shuffledTerms = shuffle(items.map((item, i) => ({ term: item.term, origIndex: i })));
+  const answerKey: number[] = [];
+  shuffledTerms.forEach((entry) => {
+    answerKey[entry.origIndex] = shuffledTerms.indexOf(entry);
+  });
+
+  // --- Layout constants ---
+  const TERM_COLS = 3;
+  const TERM_GAP_X = 4;
+  const TERM_GAP_Y = 4;
+  const BOX_W = (CONTENT_W - TERM_GAP_X * (TERM_COLS - 1)) / TERM_COLS;
+  const BOX_H = 22;
+  const DEF_TEXT_W = CONTENT_W - BOX_W - 6;
+  const ITEMS_PER_DEF_PAGE = 8;
+
+  // ── Section 1: Definitions with glue spaces ──
+
+  const defPages = Math.ceil(items.length / ITEMS_PER_DEF_PAGE);
+  const promptLabel = config.direction === 'definition-to-term' ? 'Terms' : 'Definitions';
+  const cutLabel = config.direction === 'definition-to-term' ? 'definitions' : 'terms';
+
+  for (let page = 0; page < defPages; page++) {
+    if (page > 0) doc.addPage();
+    let y = addHeader(doc, 'Cut & Glue Activity', title);
+
+    if (page === 0) {
+      doc.setFontSize(10);
+      doc.text('Name: ________________________________________', MARGIN, y);
+      y += 7;
+      doc.text(`Date: _________________`, MARGIN, y);
+      y += 8;
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Cut out the ${cutLabel} and glue each one next to its matching ${promptLabel.toLowerCase().slice(0, -1)}.`, MARGIN, y);
+      doc.setTextColor(0, 0, 0);
+      y += 8;
+    }
+
+    const startIdx = page * ITEMS_PER_DEF_PAGE;
+    const endIdx = Math.min(startIdx + ITEMS_PER_DEF_PAGE, items.length);
+
+    for (let i = startIdx; i < endIdx; i++) {
+      const def = items[i].definition;
+
+      // Calculate dynamic row height based on text + images
+      const defText = `${i + 1}. ${def.text || (def.images.length > 0 ? '(see image)' : '—')}`;
+      doc.setFontSize(10);
+      const textLines = getLineCount(doc, defText, DEF_TEXT_W, 10);
+      const textH = textLines * 5;
+      const imgSpace = def.images.length > 0 ? imgGridHeight(def.images.length, IMG_H_INLINE) + 2 : 0;
+      const contentH = textH + imgSpace + 4;
+      const rowH = Math.max(BOX_H, contentH) + 4;
+
+      y = checkPageBreak(doc, y, rowH);
+
+      // Definition number + text
+      await pdfText(doc, defText, MARGIN, y + 5, DEF_TEXT_W, 10, false);
+
+      // Render definition images below text if present
+      if (def.images.length > 0) {
+        const imgH = imgGridHeight(def.images.length, IMG_H_INLINE);
+        await addScaledImages(doc, def.images, MARGIN + 5, y + textH + 4, DEF_TEXT_W - 10, imgH);
+      }
+
+      // Empty glue box (solid border) — height matches the row
+      const glueH = rowH - 4;
+      const boxX = MARGIN + DEF_TEXT_W + 6;
+      doc.setDrawColor(160, 160, 160);
+      doc.setLineWidth(0.4);
+      doc.setLineDashPattern([], 0);
+      doc.roundedRect(boxX, y, BOX_W, glueH, 1.5, 1.5);
+
+      // Light "Glue here" hint
+      doc.setFontSize(7);
+      doc.setTextColor(210, 210, 210);
+      doc.text('Glue here', boxX + BOX_W / 2, y + glueH / 2, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+
+      y += rowH;
+    }
+  }
+
+  // ── Section 2: Cut-out terms with dotted borders ──
+
+  doc.addPage();
+
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Cut Out & Glue', MARGIN, MARGIN + 6);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Cut along the dotted lines. Glue each ${cutLabel.slice(0, -1)} next to its matching ${promptLabel.toLowerCase().slice(0, -1)}.`, MARGIN, MARGIN + 12);
+  doc.setTextColor(0, 0, 0);
+
+  // Dashed divider line under header
+  doc.setDrawColor(160, 160, 160);
+  doc.setLineDashPattern([2, 2], 0);
+  doc.setLineWidth(0.3);
+  doc.line(MARGIN, MARGIN + 16, PAGE_W - MARGIN, MARGIN + 16);
+  doc.setLineDashPattern([], 0);
+
+  // Pre-calculate uniform term box height based on tallest content
+  const innerW = BOX_W - 6;
+  let maxTermH = BOX_H;
+  for (const entry of shuffledTerms) {
+    const hasText = entry.term.text.length > 0;
+    const hasImages = entry.term.images.length > 0;
+    if (hasImages) {
+      const imgH = imgGridHeight(entry.term.images.length, IMG_H_INLINE);
+      if (hasText) {
+        doc.setFontSize(9);
+        const lc = getLineCount(doc, entry.term.text, innerW, 9);
+        const textH = lc * 5;
+        maxTermH = Math.max(maxTermH, textH + imgH + 6);
+      } else {
+        maxTermH = Math.max(maxTermH, imgH + 4);
+      }
+    }
+  }
+  const TERM_H = maxTermH;
+  const actualTermRows = Math.floor((PAGE_H - MARGIN * 2 - 24) / (TERM_H + TERM_GAP_Y));
+  const actualTermsPerPage = TERM_COLS * Math.max(actualTermRows, 1);
+
+  let termStartY = MARGIN + 22;
+  const termPages = Math.ceil(shuffledTerms.length / actualTermsPerPage);
+
+  for (let page = 0; page < termPages; page++) {
+    if (page > 0) {
+      doc.addPage();
+      termStartY = MARGIN + 10;
+    }
+
+    const startIdx = page * actualTermsPerPage;
+
+    for (let slot = 0; slot < actualTermsPerPage; slot++) {
+      const termIdx = startIdx + slot;
+      if (termIdx >= shuffledTerms.length) break;
+
+      const termEntry = shuffledTerms[termIdx];
+      const col = slot % TERM_COLS;
+      const row = Math.floor(slot / TERM_COLS);
+
+      const x = MARGIN + col * (BOX_W + TERM_GAP_X);
+      const y = termStartY + row * (TERM_H + TERM_GAP_Y);
+
+      // Dotted border — cut line (heavier to emphasize cutting)
+      doc.setDrawColor(80, 80, 80);
+      doc.setLineDashPattern([2, 2], 0);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(x, y, BOX_W, TERM_H, 1.5, 1.5);
+      doc.setLineDashPattern([], 0);
+
+      // Term content
+      const hasText = termEntry.term.text.length > 0;
+      const hasImages = termEntry.term.images.length > 0;
+
+      if (hasText && hasImages) {
+        let fontSize = 9;
+        let lc = getLineCount(doc, termEntry.term.text, innerW, fontSize);
+        const imgH = imgGridHeight(termEntry.term.images.length, IMG_H_INLINE);
+        const availTextH = TERM_H - imgH - 6;
+        while (lc * 4 > availTextH && fontSize > 6) {
+          fontSize--;
+          lc = getLineCount(doc, termEntry.term.text, innerW, fontSize);
+        }
+        const renderedH = await pdfText(doc, termEntry.term.text, x + BOX_W / 2, y + 3, innerW, fontSize, true, 'center');
+        await addScaledImages(doc, termEntry.term.images, x + 3, y + renderedH + 4, innerW, imgH);
+      } else if (hasImages) {
+        const imgH = imgGridHeight(termEntry.term.images.length, IMG_H_INLINE);
+        const imgY = y + Math.max(2, (TERM_H - imgH) / 2);
+        await addScaledImages(doc, termEntry.term.images, x + 3, imgY, innerW, imgH);
+      } else {
+        const displayText = termEntry.term.text || '(empty)';
+        let fontSize = 9;
+        let lc = getLineCount(doc, displayText, innerW, fontSize);
+        while (lc * 4 > TERM_H - 4 && fontSize > 6) {
+          fontSize--;
+          lc = getLineCount(doc, displayText, innerW, fontSize);
+        }
+        const blockH = lc * (fontSize * 0.42);
+        const textY = y + Math.max(2, (TERM_H - blockH) / 2);
+        await pdfText(doc, displayText, x + BOX_W / 2, textY, innerW, fontSize, true, 'center');
+      }
+      doc.setFont('helvetica', 'normal');
+    }
+  }
+
+  // Footer note on first cut page
+  doc.setPage(defPages + 1);
+  doc.setFontSize(7);
+  doc.setTextColor(150, 150, 150);
+  doc.text('Cut along dotted lines, then glue each one next to its matching pair.', PAGE_W / 2, PAGE_H - 6, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
+
+  // ── Answer Key page ──
+  doc.addPage();
+  let y = addHeader(doc, 'Answer Key — Cut & Glue', title);
+  doc.setFontSize(10);
+  for (let i = 0; i < items.length; i++) {
+    y = checkPageBreak(doc, y, 8);
+    const termLabel = items[i].term.text || '(image)';
+    const defLabel = items[i].definition.text || '(image)';
+    const ansText = `${i + 1}. ${termLabel} = ${defLabel}`;
+    const h = await pdfText(doc, ansText, MARGIN, y, CONTENT_W, 10);
+    y += h + 3;
+  }
+
+  addFooter(doc);
+  doc.save(`studyflow-cut-and-glue-${slugify(title)}.pdf`);
+}

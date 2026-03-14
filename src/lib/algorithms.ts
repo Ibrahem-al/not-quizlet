@@ -4,6 +4,7 @@
 
 import type { Card } from '../types';
 import { nextReviewFSRS, useFSRS } from './fsrs';
+import { stripArabicDiacritics, compareWithDiacriticsTolerance } from './diacritics';
 
 /**
  * Compute next review from quality (0–5). Uses FSRS when enabled, else SM-2.
@@ -93,6 +94,7 @@ export function shuffle<T>(array: T[]): T[] {
 
 /**
  * Grade written answer: case-insensitive, trim, typo tolerance (Levenshtein).
+ * Arabic-aware: tolerates missing/extra harakat but penalises wrong ones.
  * Default maxEditDistance 2.
  */
 export function gradeWrittenAnswer(
@@ -103,5 +105,26 @@ export function gradeWrittenAnswer(
   const c = correct.trim().toLowerCase();
   const u = user.trim().toLowerCase();
   if (c === u) return true;
+
+  // Arabic-aware path: tolerate missing/extra diacritics, penalise wrong ones
+  const arabicPattern = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/;
+  if (arabicPattern.test(c) || arabicPattern.test(u)) {
+    const cStripped = stripArabicDiacritics(c);
+    const uStripped = stripArabicDiacritics(u);
+
+    // Base text (sans diacritics) must match within typo tolerance
+    if (cStripped !== uStripped && levenshtein(cStripped, uStripped) > maxEditDistance) {
+      return false;
+    }
+
+    // If base text is exactly the same, verify diacritics where both sides have them
+    if (cStripped === uStripped) {
+      return compareWithDiacriticsTolerance(c, u);
+    }
+
+    // Base text close but not exact — can't reliably align diacritics, accept
+    return true;
+  }
+
   return levenshtein(c, u) <= maxEditDistance;
 }

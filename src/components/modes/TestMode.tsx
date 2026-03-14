@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 // jsPDF is dynamically imported in exportPdf to avoid bundling ~290KB upfront
 import { Button } from '../ui';
@@ -6,6 +6,7 @@ import { Input } from '../ui';
 import { shuffle, gradeWrittenAnswer } from '../../lib/algorithms';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { Card } from '../../types';
+import { InputDiacriticsToolbar } from '../editor/InputDiacriticsToolbar';
 
 const spring = { type: 'spring' as const, stiffness: 300, damping: 30 };
 
@@ -198,6 +199,7 @@ export function TestMode({
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Map<number, boolean>>(new Map());
   const [writtenInput, setWrittenInput] = useState('');
+  const writtenInputRef = useRef<HTMLInputElement>(null);
   const [showResults, setShowResults] = useState(false);
 
   const total = questions.length;
@@ -590,10 +592,16 @@ export function TestMode({
                     Type the {current.answerWith}:
                   </p>
                   <Input
+                    ref={writtenInputRef}
                     placeholder={`Enter the ${current.answerWith}...`}
                     value={writtenInput}
                     onChange={(e) => setWrittenInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && submitWritten()}
+                  />
+                  <InputDiacriticsToolbar
+                    inputRef={writtenInputRef}
+                    value={writtenInput}
+                    onValueChange={setWrittenInput}
                   />
                   <Button onClick={submitWritten}>Submit</Button>
                 </div>

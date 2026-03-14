@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../ui';
 import { Input } from '../ui';
@@ -6,6 +6,7 @@ import { useSpacedRep } from '../../hooks/useSpacedRep';
 import { shuffle, gradeWrittenAnswer } from '../../lib/algorithms';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { Card } from '../../types';
+import { InputDiacriticsToolbar } from '../editor/InputDiacriticsToolbar';
 
 const spring = { type: 'spring' as const, stiffness: 300, damping: 30 };
 
@@ -66,6 +67,7 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
   );
   const [index, setIndex] = useState(0);
   const [writtenAnswer, setWrittenAnswer] = useState('');
+  const writtenInputRef = useRef<HTMLInputElement>(null);
   const [answered, setAnswered] = useState(false);
   const [correct, setCorrect] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
@@ -200,11 +202,17 @@ export function LearnMode({ cards, setId, onExit }: LearnModeProps) {
                     Type the definition:
                   </p>
                   <Input
+                    ref={writtenInputRef}
                     placeholder={t('typeDefinition')}
                     value={writtenAnswer}
                     onChange={(e) => setWrittenAnswer(e.target.value)}
                     disabled={answered}
                     onKeyDown={(e) => e.key === 'Enter' && submitWritten()}
+                  />
+                  <InputDiacriticsToolbar
+                    inputRef={writtenInputRef}
+                    value={writtenAnswer}
+                    onValueChange={setWrittenAnswer}
                   />
                   {!answered && (
                     <Button onClick={submitWritten}>{t('check')}</Button>

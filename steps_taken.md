@@ -864,3 +864,36 @@ The PrintDialog now has a two-step flow:
 - Line matching worksheet layout (was already fine)
 - Flashcard PDF layout (automatically benefits from `addScaledImages` horizontal layout since `renderCellContent` already delegated to it)
 - Online TestMode component — no changes to the interactive test
+
+---
+
+## Step: Cut & Glue Printable Activity
+
+### What Changed
+
+Added a new "Cut & Glue" printable PDF activity where students cut out terms and glue them next to matching definitions.
+
+#### PDF Layout
+1. **Definitions pages** — Each definition is numbered on the left with an empty solid-bordered glue box on the right (labeled "Glue here"). Name and date fields at the top of the first page.
+2. **Cut-out terms pages** — Terms arranged in a 3-column shuffled grid, each in a dotted-border box (same dimensions as glue boxes so they fit perfectly when glued). Heavier dashed lines clearly indicate where to cut.
+3. **Answer key page** — Lists each term paired with its definition for teacher verification.
+
+#### Key Design Details
+- Dotted lines (`[2,2]` dash pattern, 0.5pt weight) on all cut-out term boxes; solid lines on glue target boxes
+- Glue box height dynamically stretches to match definition row height when images are present
+- Term box height pre-calculated from tallest content across all terms, with `imgGridHeight()` for proper image grid spacing (matching test mode pattern)
+- Rows per page recalculated dynamically based on actual term box height
+- Supports images, non-Latin text (canvas rendering), and answer direction setting
+
+### Files Changed
+
+#### `src/components/print/PrintDialog.tsx`
+- Imported `Scissors` icon from lucide-react and `generateCutAndGluePDF` from printables
+- Added "Cut & Glue" entry to `nonTestActivities` array with rose/red gradient, scissors icon, minCards: 2
+
+#### `src/lib/printables.ts`
+- Added `generateCutAndGluePDF()` export function (~160 lines)
+- Definitions section: dynamic row height using `imgGridHeight()` with `IMG_H_INLINE`, glue box stretches to match
+- Term cut-out section: pre-scans all terms for max height, dynamically calculates rows per page
+- Name/Date fields on first page (matching test PDF pattern)
+- Answer key page with term = definition pairs

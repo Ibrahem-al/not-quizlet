@@ -73,3 +73,81 @@ export function detectScript(text: string): ScriptToolbarConfig | null {
   }
   return null;
 }
+
+/* ── Arabic diacritics comparison helpers ──────────────────── */
+
+/** Broad range of Arabic combining diacritical marks */
+const ARABIC_DIACRITICS_RE = /[\u064B-\u065F\u0610-\u061A\u0670]/g;
+
+/** Vowel-class diacritics (mutually exclusive per character position) */
+const VOWEL_DIACRITICS = new Set([
+  '\u064B', // Fathatan
+  '\u064C', // Dammatan
+  '\u064D', // Kasratan
+  '\u064E', // Fatha
+  '\u064F', // Damma
+  '\u0650', // Kasra
+  '\u0652', // Sukun
+]);
+
+export function isArabicDiacritic(char: string): boolean {
+  return /^[\u064B-\u065F\u0610-\u061A\u0670]$/.test(char);
+}
+
+/** Strip all Arabic combining diacritics from a string. */
+export function stripArabicDiacritics(str: string): string {
+  return str.replace(ARABIC_DIACRITICS_RE, '');
+}
+
+interface ParsedChar {
+  base: string;
+  diacritics: string[];
+}
+
+/**
+ * Parse a string into base characters with their associated combining diacritics.
+ */
+export function parseArabicChars(str: string): ParsedChar[] {
+  const result: ParsedChar[] = [];
+  for (const char of str) {
+    if (isArabicDiacritic(char)) {
+      if (result.length > 0) {
+        result[result.length - 1].diacritics.push(char);
+      }
+    } else {
+      result.push({ base: char, diacritics: [] });
+    }
+  }
+  return result;
+}
+
+/** Get the vowel-class diacritic from a set of diacritics, or null. */
+function getVowel(diacritics: string[]): string | null {
+  for (const d of diacritics) {
+    if (VOWEL_DIACRITICS.has(d)) return d;
+  }
+  return null;
+}
+
+/**
+ * Compare two strings with Arabic diacritics tolerance:
+ * - Both have a vowel mark at the same position → must match
+ * - Only one side has a vowel mark → OK (no penalty for extra or missing)
+ * - Shadda is binary (present/absent) — never penalized since "wrong shadda" can't exist
+ */
+export function compareWithDiacriticsTolerance(a: string, b: string): boolean {
+  const aParsed = parseArabicChars(a);
+  const bParsed = parseArabicChars(b);
+  const len = Math.min(aParsed.length, bParsed.length);
+
+  for (let i = 0; i < len; i++) {
+    const aVowel = getVowel(aParsed[i].diacritics);
+    const bVowel = getVowel(bParsed[i].diacritics);
+
+    // Both have a vowel mark → must be the same
+    if (aVowel !== null && bVowel !== null && aVowel !== bVowel) {
+      return false;
+    }
+  }
+  return true;
+}

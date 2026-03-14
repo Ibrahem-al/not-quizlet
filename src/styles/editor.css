@@ -252,7 +252,7 @@
   align-items: center;
   gap: 2px;
   padding: 4px 8px;
-  border-top: 1px solid var(--studio-border);
+  border-top: 1px solid var(--studio-border, var(--color-border));
   background: color-mix(in srgb, var(--color-primary) 4%, var(--studio-surface, var(--color-surface)));
   overflow: hidden;
 }
@@ -295,6 +295,14 @@
 
 .diacritics-btn:active {
   transform: scale(0.92);
+}
+
+/* Standalone variant for plain inputs (outside TipTap editor) */
+.diacritics-toolbar--input {
+  border-top: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button, 8px);
+  margin-top: 4px;
 }
 
 /* Inline card editor (Notion-style) – border/box on wrapper in EditableCard */

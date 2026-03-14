@@ -1,8 +1,9 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../../../ui';
 import { Input } from '../../../ui';
 import type { RaceQuestion } from './types';
+import { InputDiacriticsToolbar } from '../../../editor/InputDiacriticsToolbar';
 
 const spring = { type: 'spring' as const, stiffness: 300, damping: 30 };
 
@@ -66,6 +67,7 @@ export function RaceQuestionPanel({
   onSubmitTrueFalse,
 }: Props) {
   const [writtenInput, setWrittenInput] = useState('');
+  const writtenInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmitWritten = useCallback(() => {
     if (!writtenInput.trim()) return;
@@ -134,11 +136,17 @@ export function RaceQuestionPanel({
                   Type the {question.answerWith}:
                 </p>
                 <Input
+                  ref={writtenInputRef}
                   placeholder={`Enter the ${question.answerWith}...`}
                   value={writtenInput}
                   onChange={(e) => setWrittenInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSubmitWritten()}
                   autoFocus
+                />
+                <InputDiacriticsToolbar
+                  inputRef={writtenInputRef}
+                  value={writtenInput}
+                  onValueChange={setWrittenInput}
                 />
                 <Button onClick={handleSubmitWritten} className="w-full">
                   Submit

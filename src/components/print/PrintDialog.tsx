@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowLeftRight, FileText, LayoutGrid, Puzzle, Loader2, Minus, Plus, ArrowLeft } from 'lucide-react';
+import { X, ArrowLeftRight, FileText, LayoutGrid, Puzzle, Scissors, Loader2, Minus, Plus, ArrowLeft } from 'lucide-react';
 import type { Card } from '../../types';
 import type { PrintConfig, AnswerDirection } from '../../lib/printables';
 import {
@@ -8,6 +8,7 @@ import {
   generateTestPDF,
   generateFlashcardsPDF,
   generateMatchingGamePDF,
+  generateCutAndGluePDF,
 } from '../../lib/printables';
 
 interface PrintDialogProps {
@@ -44,6 +45,15 @@ const nonTestActivities = [
     color: 'from-orange-500 to-amber-500',
     minCards: 2,
     generate: generateMatchingGamePDF,
+  },
+  {
+    key: 'cut-and-glue',
+    label: 'Cut & Glue',
+    description: 'Cut out terms and glue them next to definitions.',
+    icon: Scissors,
+    color: 'from-rose-500 to-red-400',
+    minCards: 2,
+    generate: generateCutAndGluePDF,
   },
 ] as const;
 
