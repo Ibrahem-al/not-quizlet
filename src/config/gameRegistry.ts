@@ -1,7 +1,7 @@
 import { lazy } from 'react';
 import type { ComponentType, LazyExoticComponent } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Blocks, FlipVertical2, Flag } from 'lucide-react';
+import { Blocks, FlipVertical2, Flag, Disc } from 'lucide-react';
 import type { Card } from '../types';
 
 export type GameCategory = 'word' | 'memory' | 'speed' | 'puzzle' | 'quiz';
@@ -49,6 +49,17 @@ export const gameCategories: Record<GameCategory, { label: string; color: string
 //   },
 // ──────────────────────────────────────────────
 export const gameRegistry: GameDefinition[] = [
+  {
+    id: 'spinner',
+    name: 'Spinner',
+    description: 'Spin the wheel, study the card it lands on.',
+    icon: Disc,
+    color: 'from-fuchsia-500 to-violet-500',
+    category: 'quiz',
+    tags: ['spinner', 'wheel', 'random', 'visual'],
+    minCards: 2,
+    component: lazy(() => import('../components/modes/SpinnerMode').then(m => ({ default: m.SpinnerMode }))),
+  },
   {
     id: 'block-builder',
     name: 'Block Builder',

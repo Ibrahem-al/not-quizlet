@@ -6,6 +6,12 @@ export type AnswerDirection = 'term-to-definition' | 'definition-to-term' | 'bot
 export interface PrintConfig {
   count: number;
   direction: AnswerDirection;
+  testQuestionCount?: number;
+  testQuestionTypes?: {
+    written: boolean;
+    multiple: boolean;
+    truefalse: boolean;
+  };
 }
 
 // --- Shared helpers ---
@@ -108,7 +114,7 @@ async function addScaledImage(
   return h;
 }
 
-/** Add multiple images stacked vertically, returns total height used */
+/** Add multiple images in a horizontal-first grid layout, returns total height used */
 async function addScaledImages(
   doc: JsPDFType,
   images: string[],
@@ -118,16 +124,28 @@ async function addScaledImages(
   maxH: number,
 ): Promise<number> {
   if (images.length === 0) return 0;
+  if (images.length === 1) {
+    try { return await addScaledImage(doc, images[0], x, y, maxW, maxH); } catch { return 0; }
+  }
   const gap = 2;
-  const perH = (maxH - gap * (images.length - 1)) / images.length;
-  let totalH = 0;
-  for (const img of images) {
+  // Prefer horizontal grid: 2 → 2x1, 3 → 3x1, 4 → 2x2, 5-6 → 3x2
+  const cols = images.length === 4 ? 2 : Math.min(images.length, 3);
+  const rows = Math.ceil(images.length / cols);
+  const cellW = (maxW - gap * (cols - 1)) / cols;
+  const cellH = (maxH - gap * (rows - 1)) / rows;
+  let maxRenderedH = 0;
+  for (let i = 0; i < images.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const imgX = x + col * (cellW + gap);
+    const imgY = y + row * (cellH + gap);
     try {
-      const h = await addScaledImage(doc, img, x, y + totalH, maxW, perH);
-      totalH += h + gap;
+      const h = await addScaledImage(doc, images[i], imgX, imgY, cellW, cellH);
+      const rowBottom = row * (cellH + gap) + h;
+      if (rowBottom > maxRenderedH) maxRenderedH = rowBottom;
     } catch { /* skip */ }
   }
-  return Math.max(0, totalH - gap);
+  return maxRenderedH;
 }
 
 /** Parsed content from a card side: plain text + all image data URLs */
@@ -292,6 +310,15 @@ const PAGE_H = 297;
 const MARGIN = 15;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const IMG_H_INLINE = 18; // standard inline image height for text-based PDFs (mm)
+const IMG_H_OPTION = 12; // smaller height for MC option images
+
+/** Estimate grid height for N images using horizontal-first layout */
+function imgGridHeight(count: number, perImgH: number): number {
+  if (count <= 0) return 0;
+  const cols = count === 4 ? 2 : Math.min(count, 3);
+  const rows = Math.ceil(count / cols);
+  return rows * perImgH + (rows - 1) * 2;
+}
 
 function addHeader(doc: JsPDFType, title: string, subtitle: string): number {
   doc.setFontSize(16);
@@ -463,13 +490,35 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF('p', 'mm', 'a4');
 
-  const selectedCards = cards.slice(0, Math.min(config.count, cards.length));
+  const questionCount = config.testQuestionCount ?? config.count;
+  // Select cards for the requested question count, repeating evenly when needed
+  let selectedCards: Card[];
+  const pool = cards.slice(0, Math.min(config.count, cards.length));
+  if (questionCount <= pool.length) {
+    selectedCards = shuffle(pool).slice(0, questionCount);
+  } else {
+    selectedCards = [];
+    const fullRounds = Math.floor(questionCount / pool.length);
+    const remainder = questionCount % pool.length;
+    for (let r = 0; r < fullRounds; r++) selectedCards.push(...pool);
+    selectedCards.push(...shuffle([...pool]).slice(0, remainder));
+    selectedCards = shuffle(selectedCards);
+  }
 
-  const hasMC = selectedCards.length >= 4;
+  const hasMC = pool.length >= 4;
+  const hasTF = pool.length >= 2;
   const types: TestQuestion['type'][] = [];
-  if (hasMC) types.push('written', 'mc', 'tf');
-  else if (selectedCards.length >= 2) types.push('written', 'tf');
-  else types.push('written');
+  const qTypes = config.testQuestionTypes;
+  if (qTypes) {
+    if (qTypes.written) types.push('written');
+    if (qTypes.multiple && hasMC) types.push('mc');
+    if (qTypes.truefalse && hasTF) types.push('tf');
+    if (types.length === 0) types.push('written');
+  } else {
+    if (hasMC) types.push('written', 'mc', 'tf');
+    else if (hasTF) types.push('written', 'tf');
+    else types.push('written');
+  }
 
   const questions: TestQuestion[] = await Promise.all(selectedCards.map(async (card, i) => {
     const type = types[i % types.length];
@@ -531,60 +580,61 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
       const verb = q.swapped ? 'What term means' : 'Define';
       const prompt = `${i + 1}. ${verb}: "${promptLabel}"`;
       const promptLineCount = getLineCount(doc, prompt, CONTENT_W, 10);
-      const imgSpace = promptImgs.length > 0 ? (IMG_H_INLINE + 2) * promptImgs.length + 1 : 0;
-      const needed = promptLineCount * 5 + imgSpace + 24;
+      const imgSpace = promptImgs.length > 0 ? imgGridHeight(promptImgs.length, IMG_H_INLINE) + 1 : 0;
+      const needed = promptLineCount * 5 + imgSpace + 18;
       y = checkPageBreak(doc, y, needed);
 
       const h = await pdfText(doc, prompt, MARGIN, y, CONTENT_W, 10, true);
-      y += h + 2;
+      y += h + 1;
 
       if (promptImgs.length > 0) {
-        const h = await addScaledImages(doc, promptImgs, MARGIN + 5, y, 40, (IMG_H_INLINE + 2) * promptImgs.length);
-        y += h + 2;
+        const imgH = imgGridHeight(promptImgs.length, IMG_H_INLINE);
+        const h = await addScaledImages(doc, promptImgs, MARGIN + 5, y, 40, imgH);
+        y += h + 1;
       }
-      y += 1;
 
       doc.setDrawColor(200, 200, 200);
-      for (let line = 0; line < 3; line++) {
+      for (let line = 0; line < 2; line++) {
         doc.line(MARGIN + 5, y, PAGE_W - MARGIN, y);
-        y += 7;
+        y += 6;
       }
-      y += 4;
+      y += 2;
 
     } else if (q.type === 'mc') {
       const verb = q.swapped ? 'Which term matches' : 'What is the definition of';
       const prompt = `${i + 1}. ${verb} "${promptLabel}"?`;
       const promptLineCount = getLineCount(doc, prompt, CONTENT_W, 10);
-      const imgSpace = promptImgs.length > 0 ? (IMG_H_INLINE + 2) * promptImgs.length + 1 : 0;
-      const optImgCount = q.optionImages?.reduce((s, imgs) => s + imgs.length, 0) ?? 0;
+      const imgSpace = promptImgs.length > 0 ? imgGridHeight(promptImgs.length, IMG_H_INLINE) + 1 : 0;
+      const optImgSpace = q.optionImages?.reduce((s, imgs) => s + (imgs.length > 0 ? imgGridHeight(imgs.length, IMG_H_OPTION) + 1 : 0), 0) ?? 0;
       const optionLineCounts = q.options!.map((opt) => getLineCount(doc, opt, CONTENT_W - 15, 10));
-      const needed = promptLineCount * 5 + imgSpace + optionLineCounts.reduce((s, lc) => s + lc * 5 + 2, 0) + optImgCount * (IMG_H_INLINE + 2) + 8;
+      const needed = promptLineCount * 5 + imgSpace + optionLineCounts.reduce((s, lc) => s + lc * 5 + 2, 0) + optImgSpace + 6;
       y = checkPageBreak(doc, y, needed);
 
       const h = await pdfText(doc, prompt, MARGIN, y, CONTENT_W, 10, true);
-      y += h + 2;
+      y += h + 1;
 
       if (promptImgs.length > 0) {
-        const h = await addScaledImages(doc, promptImgs, MARGIN + 5, y, 40, (IMG_H_INLINE + 2) * promptImgs.length);
-        y += h + 2;
+        const imgH = imgGridHeight(promptImgs.length, IMG_H_INLINE);
+        const h = await addScaledImages(doc, promptImgs, MARGIN + 5, y, 40, imgH);
+        y += h + 1;
       }
-      y += 1;
 
       const optionLetters = ['a', 'b', 'c', 'd'];
       for (let j = 0; j < q.options!.length; j++) {
         doc.circle(MARGIN + 5, y - 1.2, 2);
         const optFullText = `${optionLetters[j]})  ${q.options![j]}`;
         const optH = await pdfText(doc, optFullText, MARGIN + 10, y, CONTENT_W - 15, 10);
-        y += optH + 1;
+        y += optH;
 
         const optImgs = q.optionImages?.[j];
         if (optImgs && optImgs.length > 0) {
-          const h = await addScaledImages(doc, optImgs, MARGIN + 15, y, 30, (IMG_H_INLINE - 4 + 2) * optImgs.length);
-          y += h + 2;
+          const imgH = imgGridHeight(optImgs.length, IMG_H_OPTION);
+          const h = await addScaledImages(doc, optImgs, MARGIN + 15, y, 60, imgH);
+          y += h + 1;
         }
         y += 1;
       }
-      y += 4;
+      y += 2;
 
     } else if (q.type === 'tf') {
       const prompt = q.swapped
@@ -592,33 +642,26 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
         : `${i + 1}. True or False: "${promptLabel}" means "${q.shownAnswer}"`;
       const promptLineCount = getLineCount(doc, prompt, CONTENT_W, 10);
       const shownAnswerImgs = q.shownAnswerImages ?? [];
-      const totalImgCount = promptImgs.length + shownAnswerImgs.length;
-      const hasAnyImg = totalImgCount > 0;
-      const maxImgSide = Math.max(promptImgs.length, shownAnswerImgs.length);
-      const imgSpace = hasAnyImg ? (IMG_H_INLINE + 2) * maxImgSide + 1 : 0;
-      const needed = promptLineCount * 5 + imgSpace + 12;
+      const allTfImgs = [...promptImgs, ...shownAnswerImgs];
+      const hasAnyImg = allTfImgs.length > 0;
+      const imgSpace = hasAnyImg ? imgGridHeight(allTfImgs.length, IMG_H_INLINE) + 1 : 0;
+      const needed = promptLineCount * 5 + imgSpace + 10;
       y = checkPageBreak(doc, y, needed);
 
       const tfH = await pdfText(doc, prompt, MARGIN, y, CONTENT_W, 10, true);
-      y += tfH + 2;
+      y += tfH + 1;
 
       if (hasAnyImg) {
-        const imgY = y;
-        const totalImgH = (IMG_H_INLINE + 2) * maxImgSide;
-        if (promptImgs.length > 0) {
-          await addScaledImages(doc, promptImgs, MARGIN + 5, imgY, 30, totalImgH);
-        }
-        if (shownAnswerImgs.length > 0) {
-          await addScaledImages(doc, shownAnswerImgs, MARGIN + 50, imgY, 30, totalImgH);
-        }
-        y += totalImgH + 2;
+        const imgH = imgGridHeight(allTfImgs.length, IMG_H_INLINE);
+        const h = await addScaledImages(doc, allTfImgs, MARGIN + 5, y, 70, imgH);
+        y += h + 4;
       }
 
       doc.circle(MARGIN + 10, y - 1.2, 2.5);
       doc.text('True', MARGIN + 15, y);
       doc.circle(MARGIN + 40, y - 1.2, 2.5);
       doc.text('False', MARGIN + 45, y);
-      y += 10;
+      y += 6;
     }
   }
 
@@ -639,15 +682,16 @@ export async function generateTestPDF(cards: Card[], title: string, config: Prin
       answer = q.isTrue ? 'True' : 'False';
     }
     const showAnsImgs = ansImgs.length > 0 && (q.type === 'written' || q.type === 'mc');
-    const imgSpace = showAnsImgs ? (IMG_H_INLINE + 2) * ansImgs.length : 0;
-    y = checkPageBreak(doc, y, 12 + imgSpace);
+    const imgSpace = showAnsImgs ? imgGridHeight(ansImgs.length, IMG_H_OPTION) : 0;
+    y = checkPageBreak(doc, y, 8 + imgSpace);
     const ansText = `${i + 1}. ${answer}`;
     const ansH = await pdfText(doc, ansText, MARGIN, y, CONTENT_W, 10);
     y += ansH + 1;
 
     if (showAnsImgs) {
-      const h = await addScaledImages(doc, ansImgs, MARGIN + 10, y, 30, (IMG_H_INLINE - 4 + 2) * ansImgs.length);
-      y += h + 2;
+      const ansImgH = imgGridHeight(ansImgs.length, IMG_H_OPTION);
+      const h = await addScaledImages(doc, ansImgs, MARGIN + 10, y, 60, ansImgH);
+      y += h + 1;
     }
     y += 2;
   }
@@ -822,10 +866,10 @@ export async function generateMatchingGamePDF(cards: Card[], title: string, conf
   const COLS = 3;
   const ROWS = 5;
   const TILES_PER_PAGE = COLS * ROWS;
-  const GAP_X = 4;
-  const GAP_Y = 4;
+  const GAP_X = 3;
+  const GAP_Y = 3;
   const TILE_W = (CONTENT_W - GAP_X * (COLS - 1)) / COLS;
-  const TILE_H = 35;
+  const TILE_H = 38;
 
   const totalPages = Math.ceil(shuffledTiles.length / TILES_PER_PAGE);
 
@@ -890,7 +934,7 @@ export async function generateMatchingGamePDF(cards: Card[], title: string, conf
       const hasImages = tile.images.length > 0;
 
       if (hasText && hasImages) {
-        // Text on top, images below
+        // Text on top, images below (horizontal-first layout)
         const textH = contentH * 0.35;
         const imgH = contentH * 0.6;
         let fontSize = 8;
@@ -902,38 +946,11 @@ export async function generateMatchingGamePDF(cards: Card[], title: string, conf
         }
         const renderedH = await pdfText(doc, tile.text, x + TILE_W / 2, contentY, innerW, fontSize, isBold, 'center');
         const textBottom = contentY + renderedH + 1;
-
-        // Render all images stacked, centered horizontally
-        const gap = 1.5;
-        const perImgH = (imgH - gap * (tile.images.length - 1)) / tile.images.length;
-        let imgYOff = textBottom;
-        for (const img of tile.images) {
-          try {
-            const { w: natW, h: natH } = await loadImageSize(img);
-            const { w: imgW, h: imgRH } = fitImage(natW, natH, innerW - 4, perImgH);
-            const imgX = x + (TILE_W - imgW) / 2;
-            const fmt = getImageFormat(img);
-            doc.addImage(img, fmt, imgX, imgYOff, imgW, imgRH);
-            imgYOff += imgRH + gap;
-          } catch { /* skip */ }
-        }
+        await addScaledImages(doc, tile.images, x + 4, textBottom, innerW - 4, imgH);
 
       } else if (hasImages) {
-        // Images only — stack centered in cell
-        const gap = 1.5;
-        const totalImgH = contentH - 2;
-        const perImgH = (totalImgH - gap * (tile.images.length - 1)) / tile.images.length;
-        let imgYOff = contentY + 1;
-        for (const img of tile.images) {
-          try {
-            const { w: natW, h: natH } = await loadImageSize(img);
-            const { w: imgW, h: imgH2 } = fitImage(natW, natH, innerW - 2, perImgH);
-            const imgX = x + (TILE_W - imgW) / 2;
-            const fmt = getImageFormat(img);
-            doc.addImage(img, fmt, imgX, imgYOff, imgW, imgH2);
-            imgYOff += imgH2 + gap;
-          } catch { /* skip */ }
-        }
+        // Images only — horizontal-first grid layout
+        await addScaledImages(doc, tile.images, x + 4, contentY + 1, innerW - 2, contentH - 2);
 
       } else {
         // Text only

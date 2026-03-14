@@ -687,3 +687,180 @@ Button labels display each diacritic on a tatweel base character (e.g., `ـَ`) 
 - **`onMouseDown` + `preventDefault()` on buttons:** Prevents the browser from moving focus away from the editor when clicking a diacritic button. Without this, the cursor position would be lost and insertion would fail.
 - **Tatweel base for labels:** Arabic combining marks are invisible in isolation, so each button label shows the diacritic on a tatweel character (`ـ`) for readability.
 - **Per-paragraph detection:** Only the current paragraph's text is checked, not the full document. This means the toolbar appears/disappears based on where the cursor is, not what's elsewhere in the card.
+
+---
+
+## Sharing Permissions Fix & Anonymous Share Link Access
+
+### Problem
+Multiple sharing permission issues:
+1. When a user sent a set (via email invite), the receiving user clicked "Show Set" and got "Set not found" because RLS policies on `study_sets` only checked `shared_with_user_id` — email-only invites never granted read access.
+2. `SharedWithMePage` ignored the `itemName` already fetched by `loadPendingInvites()`, always showing "Untitled Set".
+3. `acceptShareLink` silently swallowed insert errors and didn't include `shared_with_email`.
+4. `useStudySet` hook had no retry logic — if the initial fetch raced before permissions were created, "Set not found" was permanent.
+5. Anonymous users (not signed in) could not view shared sets even with a valid share link.
+
+### Migration History & Lessons Learned
+
+#### Migration 010 (ROLLED BACK — caused DB outage)
+- Added RLS policy `"Users can view sets shared with their email"` on `study_sets` using `auth.jwt() ->> 'email'` with an `EXISTS` subquery on `sharing_permissions`
+- Added `claim_email_invites()` SECURITY DEFINER function
+- Added overlapping SELECT policy on `sharing_permissions`
+- **Problem:** The `auth.jwt()` + subquery policy evaluated on **every row read** from `study_sets`, causing massive performance degradation. Database became unhealthy — all queries timed out, users couldn't sign in.
+- **Recovery:** Restarted database from Supabase dashboard, then ran 3 DROP statements to remove the policies and function.
+- **Lesson:** Never add RLS policies with `auth.jwt()` calls + subqueries on high-traffic tables. Use SECURITY DEFINER functions instead.
+
+#### Migration 011 (emergency rollback)
+- Just 3 DROP statements to undo migration 010
+- `DROP POLICY IF EXISTS "Users can view sets shared with their email" ON public.study_sets;`
+- `DROP POLICY IF EXISTS "Users can view permissions for accessible items" ON public.sharing_permissions;`
+- `DROP FUNCTION IF EXISTS public.claim_email_invites();`
+
+#### Migration 012 (safe — anonymous share link access)
+- Creates `get_set_by_share_token(p_token text)` SECURITY DEFINER function
+- Validates the share link (active, not expired, under max uses)
+- Returns full set data as JSONB if valid
+- Increments access count for analytics
+- **No RLS changes** — zero performance risk
+- Only supports sets (not folders) for anonymous access
+
+### Application Code Changes
+
+#### `src/lib/cloudSync.ts`
+- Added `fetchSetByToken(token)` — calls the `get_set_by_share_token` RPC function
+- Added error logging to `fetchSetById` for easier debugging
+
+#### `src/stores/studyStore.ts`
+- Added `fetchSharedSetByToken(token)` action — fetches set via token RPC and caches in `sharedSets` map
+- Import updated to include `fetchSetByToken` from cloudSync
+
+#### `src/pages/AcceptSharePage.tsx`
+- **Anonymous flow:** When no user is signed in, fetches the set directly via `fetchSharedSetByToken(token)` instead of showing "Sign in required"
+- On success: shows "View item" button + "Sign in to save" option
+- On error: shows invalid link page with sign-in option
+- **Signed-in flow:** Unchanged — accepts link, creates `sharing_permissions`, pre-warms cache
+
+#### `src/pages/SharedWithMePage.tsx`
+- Fixed: now uses `invite.itemName` from `loadPendingInvites()` instead of always showing "Untitled Set"
+- Falls back to translated "Untitled Set"/"Untitled Folder" only when `itemName` is empty
+
+#### `src/stores/sharingStore.ts`
+- `shareWithUser`: After inserting sharing_permissions, auto-upgrades `sharing_mode` from `'private'` to `'restricted'` so RLS policies can match
+- `acceptShareLink`: Now includes `shared_with_email` in the permission entry; properly logs insert failures instead of silently swallowing
+- `loadPendingInvites`: Calls `claim_email_invites()` RPC first (wrapped in try/catch for graceful degradation)
+
+#### `src/hooks/useStudySet.ts`
+- Added 1.5s retry for race condition where sharing_permissions entry is created just after the initial fetch fails
+
+#### `src/i18n/translations.ts`
+- Added `readyToStudy` and `signInToSave` keys (EN, AR, ES)
+
+### Architecture Decisions
+- **SECURITY DEFINER function over RLS policy:** After migration 010 took down the database, anonymous access is handled via an RPC function that bypasses RLS entirely. The function validates the token itself, so security is maintained without touching RLS.
+- **Token-based access, not set-ID-based:** Anonymous users can only access a set if they have a valid share token. They cannot browse or guess set IDs.
+- **Cache-first for anonymous users:** The set is fetched and stored in the `sharedSets` map on the AcceptSharePage. When navigating to `/sets/:id`, the SetDetailPage finds it in cache via `useStudySet`.
+
+---
+
+## Step 13 — Move Spinner into Games Section
+
+### What Changed
+Moved the Spinner study mode from a standalone study mode card into the Games browser modal, so it appears alongside Block Builder, Memory Card Flip, and Race to Finish.
+
+### Why
+UI cleanup — the Spinner is conceptually a game/activity rather than a core study mode like Flashcards, Learn, Match, or Test. Consolidating it into the Games section reduces clutter on the set detail page.
+
+### Files Changed
+
+#### `src/config/gameRegistry.ts`
+- Added `Disc` icon import from lucide-react
+- Registered Spinner as the first game entry: id `'spinner'`, category `'quiz'`, minCards `2`, fuchsia-violet gradient
+- Used `lazy(() => import(...).then(m => ({ default: m.SpinnerMode })))` to wrap the named export as a default export for React.lazy compatibility
+
+#### `src/pages/SetDetailPage.tsx`
+- Removed the standalone Spinner card (both enabled and disabled states) from the study modes grid
+- Removed unused `Disc` icon import
+- Changed grid layout from `lg:grid-cols-6` to `lg:grid-cols-5` (4 study modes + Games button)
+
+#### `src/pages/StudyPage.tsx`
+- Removed `SpinnerMode` import and the hardcoded `case 'spinner'` from the switch statement
+- Removed `'spinner'` from the `Mode` type union
+- Spinner now routes through the game registry's dynamic `default` case, same as other games
+
+### What Did NOT Change
+- `src/components/modes/SpinnerMode.tsx` — the spinner game component itself was not modified at all
+- The spinner is still accessible at `/sets/:id/study/spinner` — now resolved via the game registry instead of a hardcoded switch case
+
+---
+
+## Step: Study Mode Tiles — Single Row & Consistent Height
+
+### What Changed
+- Set detail page study mode tiles (Flashcards, Learn, Match, Test, Games, Print) now display in a single row on large screens (`lg:grid-cols-6`)
+- All tiles use `h-full min-h-[160px]` for consistent height across all 6 tiles
+- Link and button wrappers got `h-full` (and `w-full` on Games/Print buttons) so inner cards stretch to fill the grid row height
+
+### Files Changed
+- `src/pages/SetDetailPage.tsx` — grid columns `lg:grid-cols-5` → `lg:grid-cols-6`, consistent tile height classes, wrapper stretch classes
+
+---
+
+## Step: Print Activities — PDF Spacing & Test Configuration
+
+### What Changed
+
+#### 1. Print Dialog Two-Step Flow
+The PrintDialog now has a two-step flow:
+- **Main view**: Shows "Number of cards" + "Answer with" direction + 4 activity buttons (Printable Test, Line Matching, Flashcards, Matching Game)
+- **Test config sub-view**: Clicking "Printable Test" opens a dedicated config screen with:
+  - Question types: Written, Multiple choice, True/False checkboxes (same options as online TestMode)
+  - Answer direction: Definition / Term / Both
+  - Number of questions: Stepper + presets (5, 10, 20, All, 2x) — can exceed card count, cards repeat evenly
+  - Back arrow to return to main view, "Generate Test" button
+
+#### 2. Test PDF — Question Count & Card Repeating
+- `PrintConfig` now has `testQuestionCount` and `testQuestionTypes` fields
+- `generateTestPDF` uses `testQuestionCount` (separate from card count) and repeats cards evenly when question count exceeds card count, matching the online test behavior
+- Question type selection respects the user's checkbox choices
+
+#### 3. PDF Spacing Fixes — All Activities
+- **Written questions**: Reduced from 3 answer lines to 2, line spacing 7→6mm, removed extra gaps
+- **MC questions**: Reduced trailing gaps, tightened inter-option spacing
+- **T/F questions**: Trailing gap reduced from 10→6mm, added 4mm gap between images and True/False bubbles
+- **Image grid layout**: `addScaledImages` changed from vertical stacking to horizontal-first grid:
+  - 1 image: full width
+  - 2-3 images: side-by-side in one row
+  - 4 images: 2x2 grid (not 3+1)
+  - 5-6 images: 3-column grid with row wrapping
+- **Image width constraints**: MC option images use 60mm width, T/F images use 70mm, answer key images use 60mm (prevents images spreading across full page width)
+- **Grid-aware height estimation**: `imgGridHeight()` helper calculates correct height for horizontal layouts instead of multiplying per-image height by count
+- **MC option images**: Use smaller `IMG_H_OPTION = 12mm` instead of 18mm
+- **Matching game tiles**: Increased tile height 35→38mm, reduced gaps 4→3mm
+
+#### 4. Matching Game Tiles — Horizontal Image Layout
+- Matching game tile rendering now delegates to `addScaledImages` (horizontal-first grid) instead of manual vertical stacking loops
+
+### Files Changed
+
+#### `src/components/print/PrintDialog.tsx`
+- Full rewrite: two-step flow with main activity picker and test config sub-view
+- Test config has question type checkboxes, question count stepper with presets, answer direction picker
+- Separated test generation (`handleGenerateTest`) from other activities (`handleGenerate`)
+- Added `ArrowLeft` icon for back navigation
+
+#### `src/lib/printables.ts`
+- `PrintConfig` interface: added `testQuestionCount` and `testQuestionTypes` fields
+- `generateTestPDF`: uses `testQuestionCount`, repeats cards when count > pool size, respects question type selections
+- `addScaledImages`: rewritten from vertical stacking to horizontal-first grid layout with smart column selection (4 images → 2x2)
+- Added `IMG_H_OPTION = 12` constant for smaller MC option images
+- Added `imgGridHeight()` helper for grid-aware height estimation
+- All test question types (written, MC, T/F) use grid-aware height calculations
+- MC option images: constrained to 60mm width
+- T/F images: combined into single horizontal grid, constrained to 70mm width, 4mm gap before True/False bubbles
+- Answer key images: constrained to 60mm width
+- Matching game tiles: both "text+images" and "images only" cases delegate to `addScaledImages`
+
+### What Did NOT Change
+- Line matching worksheet layout (was already fine)
+- Flashcard PDF layout (automatically benefits from `addScaledImages` horizontal layout since `renderCellContent` already delegated to it)
+- Online TestMode component — no changes to the interactive test

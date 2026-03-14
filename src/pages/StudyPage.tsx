@@ -4,13 +4,13 @@ import { FlashcardMode } from '../components/modes/FlashcardMode';
 import { LearnMode } from '../components/modes/LearnMode';
 import { MatchMode } from '../components/modes/MatchMode';
 import { TestMode } from '../components/modes/TestMode';
-import { SpinnerMode } from '../components/modes/SpinnerMode';
+
 import { AppLayout } from '../components/layout/AppLayout';
 import { Button } from '../components/ui';
 import { useStudySet } from '../hooks/useStudySet';
 import { gameRegistry } from '../config/gameRegistry';
 
-type Mode = 'flashcards' | 'learn' | 'match' | 'test' | 'spinner';
+type Mode = 'flashcards' | 'learn' | 'match' | 'test';
 
 function StudyError({ message, onBack }: { message: string; onBack: () => void }) {
   return (
@@ -47,8 +47,6 @@ export function StudyPage() {
       return <MatchMode cards={cards} onExit={exit} />;
     case 'test':
       return <TestMode cards={cards} setTitle={set.title} onExit={exit} />;
-    case 'spinner':
-      return <SpinnerMode cards={cards} setId={set.id} onExit={exit} />;
     default: {
       const game = gameRegistry.find(g => g.id === mode);
       if (game) {

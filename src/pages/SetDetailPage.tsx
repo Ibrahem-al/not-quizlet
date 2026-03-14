@@ -16,7 +16,6 @@ import {
   Printer,
   Zap,
   Gamepad2,
-  Disc,
 } from 'lucide-react';
 import { useDebouncedCallback } from 'use-debounce';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -451,8 +450,8 @@ export function SetDetailPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {modes.map(({ path, label, icon: Icon, description, color }) =>
                 canStartStudying ? (
-                  <Link key={path} to={`/sets/${displaySet.id}/study/${path}`}>
-                    <Card variant="elevated" className="flex flex-col items-center gap-2 py-5 min-h-[120px] justify-center text-center group cursor-pointer relative overflow-hidden">
+                  <Link key={path} to={`/sets/${displaySet.id}/study/${path}`} className="h-full">
+                    <Card variant="elevated" className="flex flex-col items-center gap-2 py-5 h-full min-h-[160px] justify-center text-center group cursor-pointer relative overflow-hidden">
                       <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-0 group-hover:opacity-5 transition-opacity duration-300`} />
                       <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-lg mb-1`}>
                         <Icon className="w-6 h-6 text-white shrink-0" />
@@ -466,7 +465,7 @@ export function SetDetailPage() {
                 ) : (
                   <div
                     key={path}
-                    className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] opacity-50 cursor-not-allowed text-center min-h-[120px] justify-center"
+                    className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] opacity-50 cursor-not-allowed text-center h-full min-h-[160px] justify-center"
                     aria-disabled="true"
                   >
                     <div className="w-12 h-12 rounded-xl bg-[var(--color-text-muted)]/30 flex items-center justify-center mb-1">
@@ -478,37 +477,10 @@ export function SetDetailPage() {
                 )
               )}
 
-              {/* Spinner — visual flashcard spinner */}
-              {canStartStudying ? (
-                <Link to={`/sets/${displaySet.id}/study/spinner`}>
-                  <Card variant="elevated" className="flex flex-col items-center gap-2 py-5 min-h-[120px] justify-center text-center group cursor-pointer relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500 to-violet-500 opacity-0 group-hover:opacity-5 transition-opacity duration-300" />
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-500 flex items-center justify-center shadow-lg mb-1">
-                      <Disc className="w-6 h-6 text-white shrink-0" />
-                    </div>
-                    <span className="text-sm font-semibold text-[var(--color-text)]">Spinner</span>
-                    <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">
-                      Spin the wheel, study the card it lands on.
-                    </span>
-                  </Card>
-                </Link>
-              ) : (
-                <div
-                  className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] opacity-50 cursor-not-allowed text-center min-h-[120px] justify-center"
-                  aria-disabled="true"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-[var(--color-text-muted)]/30 flex items-center justify-center mb-1">
-                    <Disc className="w-6 h-6 text-[var(--color-text-tertiary)] shrink-0" />
-                  </div>
-                  <span className="text-sm font-semibold text-[var(--color-text-secondary)]">Spinner</span>
-                  <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">Spin the wheel, study the card it lands on.</span>
-                </div>
-              )}
-
               {/* Games — opens browser modal */}
               {canStartStudying ? (
-                <button onClick={() => setShowGamesBrowser(true)} className="text-left">
-                  <Card variant="elevated" className="flex flex-col items-center gap-2 py-5 min-h-[120px] justify-center text-center group cursor-pointer relative overflow-hidden">
+                <button onClick={() => setShowGamesBrowser(true)} className="text-left h-full w-full">
+                  <Card variant="elevated" className="flex flex-col items-center gap-2 py-5 h-full min-h-[160px] justify-center text-center group cursor-pointer relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-rose-500 to-pink-500 opacity-0 group-hover:opacity-5 transition-opacity duration-300" />
                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center shadow-lg mb-1">
                       <Gamepad2 className="w-6 h-6 text-white shrink-0" />
@@ -521,7 +493,7 @@ export function SetDetailPage() {
                 </button>
               ) : (
                 <div
-                  className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] opacity-50 cursor-not-allowed text-center min-h-[120px] justify-center"
+                  className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] opacity-50 cursor-not-allowed text-center h-full min-h-[160px] justify-center"
                   aria-disabled="true"
                 >
                   <div className="w-12 h-12 rounded-xl bg-[var(--color-text-muted)]/30 flex items-center justify-center mb-1">
@@ -529,6 +501,33 @@ export function SetDetailPage() {
                   </div>
                   <span className="text-sm font-semibold text-[var(--color-text-secondary)]">Games</span>
                   <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">Browse fun games to study your cards.</span>
+                </div>
+              )}
+
+              {/* Print Activities — opens print dialog */}
+              {canStartStudying ? (
+                <button onClick={() => setShowPrintDialog(true)} className="text-left h-full w-full">
+                  <Card variant="elevated" className="flex flex-col items-center gap-2 py-5 h-full min-h-[160px] justify-center text-center group cursor-pointer relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-sky-500 to-blue-500 opacity-0 group-hover:opacity-5 transition-opacity duration-300" />
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500 to-blue-500 flex items-center justify-center shadow-lg mb-1">
+                      <Printer className="w-6 h-6 text-white shrink-0" />
+                    </div>
+                    <span className="text-sm font-semibold text-[var(--color-text)]">Print</span>
+                    <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">
+                      Generate printable PDFs and worksheets.
+                    </span>
+                  </Card>
+                </button>
+              ) : (
+                <div
+                  className="flex flex-col items-center gap-2 py-5 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] opacity-50 cursor-not-allowed text-center h-full min-h-[160px] justify-center"
+                  aria-disabled="true"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-[var(--color-text-muted)]/30 flex items-center justify-center mb-1">
+                    <Printer className="w-6 h-6 text-[var(--color-text-tertiary)] shrink-0" />
+                  </div>
+                  <span className="text-sm font-semibold text-[var(--color-text-secondary)]">Print</span>
+                  <span className="text-xs text-[var(--color-text-tertiary)] px-2 leading-relaxed">Generate printable PDFs and worksheets.</span>
                 </div>
               )}
             </div>
@@ -604,13 +603,6 @@ export function SetDetailPage() {
                         onClick={() => { setShowMoveDialog(true); setShowMoreActions(false); }}
                       >
                         <Folder className="w-4 h-4 text-[var(--color-warning)]" /> Move to folder
-                      </button>
-                      <button
-                        type="button"
-                        className="w-full px-4 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] flex items-center gap-2.5 transition-colors"
-                        onClick={() => { setShowPrintDialog(true); setShowMoreActions(false); }}
-                      >
-                        <Printer className="w-4 h-4 text-[var(--color-primary)]" /> Print activities
                       </button>
                       <div className="border-t border-[var(--color-border)] my-1" />
                       <button
