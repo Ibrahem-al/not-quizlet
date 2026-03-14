@@ -117,7 +117,7 @@ export async function fetchPublicSets(): Promise<StudySet[]> {
   // Use the lightweight RPC that returns card_count instead of full cards JSONB
   const { data, error } = await supabase.rpc('get_public_sets');
   if (error) throw error;
-  return (data ?? []).map((r) => fromPublicRow(r as PublicSetRow));
+  return ((data ?? []) as PublicSetRow[]).map((r) => fromPublicRow(r));
 }
 
 export async function fetchSetById(setId: string): Promise<StudySet | null> {
