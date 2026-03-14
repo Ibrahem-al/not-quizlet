@@ -11,7 +11,7 @@ import { useStudyStore } from '../stores/studyStore';
 import { useValidationStore } from '../stores/validationStore';
 import { useToastStore } from '../stores/toastStore';
 
-const DEBOUNCE_MS = 1000;
+const DEBOUNCE_MS = 5000;
 
 function downloadBackup(studySet: { id: string; title: string; cards: unknown[] }) {
   const blob = new Blob([JSON.stringify(studySet, null, 2)], { type: 'application/json' });

@@ -91,6 +91,12 @@ export const useAuthStore = create<AuthState & AuthActions>((set, get) => ({
   signIn: async (email, password) => {
     if (!supabase) return { error: new Error('Supabase not configured') };
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    // Fire-and-forget: clean up expired sessions & stale audit data
+    if (!error) {
+      supabase.rpc('cleanup_stale_data').then(() => {});
+    }
+
     return { error: error ?? null };
   },
 

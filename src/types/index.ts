@@ -57,6 +57,8 @@ export interface StudySet {
   sharingMode: 'private' | 'restricted' | 'link' | 'public';
   folderId?: string;
   effectivePermissions?: 'owner' | 'editor' | 'viewer';
+  /** Server-computed card count (used by public browse to avoid fetching full cards JSONB). */
+  cardCount?: number;
 }
 
 export interface Settings {

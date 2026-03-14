@@ -20,7 +20,7 @@ export function PublicSetsPage() {
   const fuse = useMemo(
     () =>
       new Fuse(publicSets, {
-        keys: ['title', 'description', 'tags', 'cards.term'],
+        keys: ['title', 'description', 'tags'],
         threshold: 0.3,
       }),
     [publicSets]
@@ -122,7 +122,7 @@ export function PublicSetsPage() {
                       <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-tertiary)]">
                         <Layers className="w-3.5 h-3.5" />
                         <span className="font-medium">
-                          {set.cards.length} {set.cards.length === 1 ? 'card' : 'cards'}
+                          {set.cardCount ?? set.cards.length} {(set.cardCount ?? set.cards.length) === 1 ? 'card' : 'cards'}
                         </span>
                       </div>
                       {set.userId && (
