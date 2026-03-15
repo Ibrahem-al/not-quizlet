@@ -171,7 +171,6 @@ export function EditorStream({
       if (e.key === 'Tab' && !e.shiftKey) {
         const target = e.target as HTMLElement;
         const defPanes = editorRef.current?.querySelectorAll('[data-def-pane]');
-        const termPanes = editorRef.current?.querySelectorAll('[data-term-pane]');
         // Map active index to page-relative index for DOM queries
         const pageRelIndex = activeCardIndex - pageStart;
         if (target.closest('[data-term-pane]') && defPanes?.[pageRelIndex]) {

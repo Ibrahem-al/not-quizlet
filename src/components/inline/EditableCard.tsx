@@ -75,7 +75,7 @@ interface ActiveEditorsProps {
   setAiSuggestion: (s: string) => void;
   termErrors: ValidationError[];
   defErrors: ValidationError[];
-  editorRefsCallback: (term: ReturnType<typeof useEditor>, def: ReturnType<typeof useEditor>) => void;
+  editorRefsCallback: (term: ReturnType<typeof useEditor> | null, def: ReturnType<typeof useEditor> | null) => void;
   openImageModal: (target: 'term' | 'definition') => void;
   showAiBadge: boolean;
   defEmpty: boolean;
@@ -445,7 +445,7 @@ export const EditableCard = memo(function EditableCard({
   }, [termPlain, defEmpty, canSuggest, fetchSuggestion]);
 
   // Callback to receive editor refs from ActiveEditors child
-  const editorRefsCallback = useCallback((term: ReturnType<typeof useEditor>, def: ReturnType<typeof useEditor>) => {
+  const editorRefsCallback = useCallback((term: ReturnType<typeof useEditor> | null, def: ReturnType<typeof useEditor> | null) => {
     termEditorRef.current = term;
     defEditorRef.current = def;
   }, []);
