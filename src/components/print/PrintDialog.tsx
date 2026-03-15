@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowLeftRight, FileText, LayoutGrid, Puzzle, Scissors, Loader2, Minus, Plus, ArrowLeft } from 'lucide-react';
+import { X, ArrowLeftRight, FileText, LayoutGrid, Puzzle, Scissors, BookOpen, Loader2, Minus, Plus, ArrowLeft } from 'lucide-react';
 import type { Card } from '../../types';
 import type { PrintConfig, AnswerDirection } from '../../lib/printables';
 import {
@@ -9,6 +9,7 @@ import {
   generateFlashcardsPDF,
   generateMatchingGamePDF,
   generateCutAndGluePDF,
+  generateLiftTheFlapPDF,
 } from '../../lib/printables';
 
 interface PrintDialogProps {
@@ -54,6 +55,15 @@ const nonTestActivities = [
     color: 'from-rose-500 to-red-400',
     minCards: 2,
     generate: generateCutAndGluePDF,
+  },
+  {
+    key: 'lift-the-flap',
+    label: 'Lift the Flap',
+    description: 'Cut flaps with questions, lift to reveal answers underneath.',
+    icon: BookOpen,
+    color: 'from-violet-500 to-indigo-500',
+    minCards: 2,
+    generate: generateLiftTheFlapPDF,
   },
 ] as const;
 

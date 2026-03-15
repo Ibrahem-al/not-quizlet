@@ -1277,3 +1277,178 @@ export async function generateCutAndGluePDF(cards: Card[], title: string, config
   addFooter(doc);
   doc.save(`studyflow-cut-and-glue-${slugify(title)}.pdf`);
 }
+
+// --- 6. Lift-the-Flap Activity ---
+
+export async function generateLiftTheFlapPDF(cards: Card[], title: string, config: PrintConfig): Promise<void> {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF('p', 'mm', 'a4');
+
+  const selectedCards = cards.slice(0, Math.min(config.count, cards.length));
+
+  // Resolve direction per-item: "question" is the flap (page 2), "answer" is under it (page 1)
+  const items = await Promise.all(selectedCards.map(async (c) => {
+    const dir = config.direction === 'both'
+      ? (Math.random() > 0.5 ? 'term-to-definition' : 'definition-to-term')
+      : config.direction;
+    const swapped = dir === 'definition-to-term';
+    return {
+      question: await parseCardSideAsync(swapped ? c.definition : c.term, swapped ? undefined : c.imageData),
+      answer: await parseCardSideAsync(swapped ? c.term : c.definition, swapped ? c.imageData : undefined),
+    };
+  }));
+
+  // --- Layout constants (horizontal flaps, full-width rows) ---
+  const FLAP_MARGIN = 12; // mm page margin
+  const CELL_GAP = 4; // mm vertical gap between rows for cutting room
+  const GLUE_STRIP_W = 10; // ~1cm glue strip on left edge of flap
+  const CONTENT_AREA_W = PAGE_W - FLAP_MARGIN * 2;
+  const CONTENT_AREA_H = PAGE_H - FLAP_MARGIN * 2 - 14; // room for title/instructions
+
+  // Each cell spans the full content width — wide horizontal rectangles
+  const cellW = CONTENT_AREA_W;
+  const CELL_H = 28; // fixed short height so flaps are landscape-oriented
+  const rowsPerPage = Math.floor((CONTENT_AREA_H + CELL_GAP) / (CELL_H + CELL_GAP));
+  const cellsPerPage = rowsPerPage;
+
+  const totalPagePairs = Math.ceil(items.length / cellsPerPage);
+
+  for (let pair = 0; pair < totalPagePairs; pair++) {
+    const startIdx = pair * cellsPerPage;
+    const endIdx = Math.min(startIdx + cellsPerPage, items.length);
+    const pageItems = items.slice(startIdx, endIdx);
+
+    // ── Page 1 of pair: Base sheet (answers) ──
+    if (pair > 0) doc.addPage();
+    // else first page already exists
+
+    // Title
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(title, FLAP_MARGIN, FLAP_MARGIN + 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(120, 120, 120);
+    doc.text('Base Sheet — Answers are revealed when flaps are lifted', FLAP_MARGIN, FLAP_MARGIN + 10);
+    doc.setTextColor(0, 0, 0);
+
+    const gridStartY = FLAP_MARGIN + 14;
+
+    for (let i = 0; i < pageItems.length; i++) {
+      const x = FLAP_MARGIN;
+      const y = gridStartY + i * (CELL_H + CELL_GAP);
+
+      // Solid border for alignment
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.3);
+      doc.setLineDashPattern([], 0);
+      doc.rect(x, y, cellW, CELL_H);
+
+      // Glue strip on RIGHT edge — light gray shading (flap hinge attaches here)
+      const glueX = x + cellW - GLUE_STRIP_W;
+      doc.setFillColor(230, 230, 230);
+      doc.rect(glueX, y, GLUE_STRIP_W, CELL_H, 'F');
+
+      // Left edge of glue strip — solid thin line to visually separate
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.2);
+      doc.setLineDashPattern([], 0);
+      doc.line(glueX, y, glueX, y + CELL_H);
+
+      // "GLUE HERE" label rotated in the strip
+      doc.setFontSize(6);
+      doc.setTextColor(160, 160, 160);
+      doc.text('GLUE HERE', glueX + GLUE_STRIP_W / 2, y + CELL_H / 2, { align: 'center', angle: 90 });
+      doc.setTextColor(0, 0, 0);
+
+      // Render answer content centered in the area LEFT of the glue strip
+      const innerPad = 3;
+      const innerW = cellW - GLUE_STRIP_W - innerPad * 2;
+      const innerH = CELL_H - innerPad * 2;
+      const content = pageItems[i].answer;
+
+      await renderFlapCellContent(doc, content, x + innerPad, y + innerPad, innerW, innerH);
+    }
+
+    // ── Page 2 of pair: Cutout flaps (questions) ──
+    doc.addPage();
+
+    // Instructions header
+    doc.setFontSize(7);
+    doc.setTextColor(80, 80, 80);
+    const instruction = 'Cut along the dotted lines. Apply glue to the shaded strip on the base sheet, then press the flap onto the matching cell.';
+    doc.text(instruction, FLAP_MARGIN, FLAP_MARGIN + 5, { maxWidth: CONTENT_AREA_W });
+    doc.setTextColor(0, 0, 0);
+
+    for (let i = 0; i < pageItems.length; i++) {
+      const x = FLAP_MARGIN;
+      const y = gridStartY + i * (CELL_H + CELL_GAP);
+
+      // Dashed border around entire cell (cut line)
+      doc.setDrawColor(80, 80, 80);
+      doc.setLineDashPattern([2, 2], 0);
+      doc.setLineWidth(0.4);
+      doc.rect(x, y, cellW, CELL_H);
+      doc.setLineDashPattern([], 0);
+
+      // Question content — centered in full cell
+      const contentX = x + 3;
+      const contentW = cellW - 6;
+      const contentY = y + 2;
+      const contentH = CELL_H - 4;
+      const content = pageItems[i].question;
+
+      await renderFlapCellContent(doc, content, contentX, contentY, contentW, contentH);
+    }
+  }
+
+  addFooter(doc);
+  doc.save(`studyflow-lift-the-flap-${slugify(title)}.pdf`);
+}
+
+/** Render text + images content centered within a bounded cell for lift-the-flap */
+async function renderFlapCellContent(
+  doc: JsPDFType,
+  content: CardContent,
+  x: number,
+  y: number,
+  maxW: number,
+  maxH: number,
+): Promise<void> {
+  const hasText = content.text.length > 0;
+  const hasImages = content.images.length > 0;
+
+  if (hasText && hasImages) {
+    const textH = maxH * 0.4;
+    const imgH = maxH * 0.55;
+
+    let fontSize = 9;
+    let lineCount = getLineCount(doc, content.text, maxW, fontSize);
+    while (lineCount * 4 > textH && fontSize > 6) {
+      fontSize--;
+      lineCount = getLineCount(doc, content.text, maxW, fontSize);
+    }
+    // Vertically center text in its portion
+    const blockH = lineCount * (fontSize * 0.42);
+    const textY = y + Math.max(0, (textH - blockH) / 2);
+    const renderedH = await pdfText(doc, content.text, x + maxW / 2, textY, maxW, fontSize, false, 'center');
+    const imgStartY = y + Math.min(renderedH + 2, textH);
+    await addScaledImages(doc, content.images, x, imgStartY, maxW - 2, imgH);
+
+  } else if (hasImages) {
+    await addScaledImages(doc, content.images, x, y + 1, maxW - 2, maxH - 2);
+
+  } else {
+    const displayText = content.text || '(empty)';
+    let fontSize = 9;
+    let lineCount = getLineCount(doc, displayText, maxW, fontSize);
+    while (lineCount * 4.5 > maxH - 2 && fontSize > 6) {
+      fontSize--;
+      lineCount = getLineCount(doc, displayText, maxW, fontSize);
+    }
+    const blockH = lineCount * (fontSize * 0.42);
+    const startY = y + Math.max(0, (maxH - blockH) / 2);
+    await pdfText(doc, displayText, x + maxW / 2, startY, maxW, fontSize, false, 'center');
+  }
+  doc.setFont('helvetica', 'normal');
+}

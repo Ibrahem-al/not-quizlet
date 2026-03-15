@@ -1239,3 +1239,99 @@ Fixed 5 TypeScript strict-mode errors that caused the Vercel production build to
 - **`src/components/modes/MatchMode.tsx`** — Added `tileIndex` property to tile construction
 - **`src/lib/printables.ts`** — Removed unused `findCorrectOptionIndices` import
 - **`src/components/live/PlayerQuestionView.tsx`** — Aligned `question` prop Omit type with store type
+
+---
+
+## Step: Database Performance Optimization (CPU ~90%, RAM ~50%)
+
+### Problem
+Supabase project was exhausting CPU (~90%) and RAM (~50%) with only a few users. The dashboard showed "Your project is currently exhausting multiple resources."
+
+### Root Causes Identified
+1. **4 overlapping SELECT RLS policies on `study_sets`** — PostgreSQL OR-combines all SELECT policies per row. The "Users can view sets shared with them" policy had a 3-level nested EXISTS subquery (study_sets → folders → sharing_permissions). Even simple owner-only queries paid the cost of evaluating all sharing/public/link checks.
+2. **3 overlapping SELECT RLS policies on `sharing_permissions`** — Same OR-combination overhead.
+3. **Auto-save upserted the entire study set every 1–2 seconds** — Each card edit triggered `syncSetToCloud()` with the full `cards` JSONB (which can contain base64 images in TipTap HTML). Each upsert evaluated RLS policies and created dead tuples requiring auto-vacuum. This was the #1 CPU driver.
+4. **No cleanup of expired data** — Expired live game sessions (4-hour TTL), old failed login attempts, and password reset requests accumulated indefinitely, bloating tables and making RLS EXISTS checks scan more rows.
+5. **`fetchPublicSets()` fetched full `cards` JSONB** — The public browse page loaded every card's content (including embedded images) just to show titles and card counts.
+
+### Fixes Applied
+
+#### Migration: `013_performance_optimization.sql` + `013b_remaining_fixes.sql`
+Run both in the Supabase SQL Editor. Changes:
+- **Consolidated `study_sets` SELECT policies: 4 → 2** — Policy 1 ("owner_select_study_sets"): simple `user_id = auth.uid()` for the fast path (~90% of queries). Policy 2 ("shared_select_study_sets"): all non-owner access in one policy with a `folder_id IS NOT NULL` guard to skip the expensive 3-level folder subquery for sets not in folders.
+- **Consolidated `sharing_permissions` SELECT policies: 3 → 1** — Single "select_sharing_permissions" policy checking `shared_by_user_id`, `shared_with_user_id`, or `shared_with_email`.
+- **Immediate data cleanup** — Deleted expired live game sessions (cascades to participants + answers), failed login attempts older than 1 hour, password reset requests older than 24 hours.
+- **Added partial index** — `idx_share_links_active_lookup` on `share_links(item_type, item_id) WHERE is_active = true` for faster RLS active-link checks.
+- **Created `cleanup_stale_data()` RPC** — Reusable function that deletes expired sessions, old login attempts, and old reset requests. Returns JSON with counts. Sets up pg_cron if available (Pro plan).
+- **Updated `get_public_sets()` function** — Now returns `card_count` (via `jsonb_array_length`) instead of the full `cards` JSONB. Required `DROP FUNCTION` first because the return type changed (PostgreSQL error 42P13).
+- **ANALYZE on all tables** — Refreshed query planner statistics after cleanup and index changes.
+
+#### App-Level: Increased auto-save debounce (1–2s → 5s)
+**Files:** `src/hooks/useAutoSave.ts`, `src/pages/SetDetailPage.tsx`
+**Change:** Increased `DEBOUNCE_MS` from 1000 to 5000 in `useAutoSave.ts`, and from 2000 to 5000 in `SetDetailPage.tsx`. Reduces upsert frequency by 3–5x during active editing.
+
+#### App-Level: Skip sync when nothing changed
+**File:** `src/lib/cloudSync.ts`
+**Change:** Added a `lastSyncedAt` Map that tracks the `updatedAt` timestamp of the last successful sync per set ID. `syncSetToCloud()` now returns early if `set.updatedAt` matches the last-synced value, avoiding redundant upserts when the debounce fires but no content has changed.
+
+#### App-Level: Lightweight public sets query (no cards JSONB)
+**Files:** `src/lib/cloudSync.ts`, `src/pages/PublicSetsPage.tsx`, `src/types/index.ts`
+**Change:** `fetchPublicSets()` now calls the `get_public_sets()` RPC (which returns `card_count` instead of full `cards`). Added `PublicSetRow` interface and `fromPublicRow()` mapper that sets `cards: []` and populates the new `cardCount` field. `PublicSetsPage` uses `set.cardCount ?? set.cards.length` for the card count display. Removed `cards.term` from Fuse search keys (was searching raw HTML anyway).
+
+#### App-Level: Cleanup on login
+**File:** `src/stores/authStore.ts`
+**Change:** After successful `signInWithPassword()`, fires `supabase.rpc('cleanup_stale_data')` as fire-and-forget to keep expired data pruned on each login.
+
+#### Build Fix: TS7006 implicit any
+**File:** `src/lib/cloudSync.ts`
+**Change:** `supabase.rpc('get_public_sets')` returns untyped data. The `.map((r) => ...)` callback parameter `r` was implicitly `any`, which `tsc -b` (strict mode, used by Vercel) rejects. Fixed by casting the array: `((data ?? []) as PublicSetRow[]).map(...)`.
+
+### Files Changed
+- **`supabase/migrations/013_performance_optimization.sql`** — Full migration: policy consolidation, data cleanup, partial index, cleanup function, pg_cron setup, updated `get_public_sets()`, ANALYZE
+- **`supabase/migrations/013b_remaining_fixes.sql`** — Remainder after 013 failed at `get_public_sets()` (DROP + CREATE with new return type, ANALYZE)
+- **`src/hooks/useAutoSave.ts`** — Debounce 1000ms → 5000ms
+- **`src/pages/SetDetailPage.tsx`** — Debounce 2000ms → 5000ms
+- **`src/lib/cloudSync.ts`** — Added `lastSyncedAt` skip-unchanged logic, added `PublicSetRow`/`fromPublicRow` for lightweight public sets, `fetchPublicSets()` now calls RPC, fixed TS7006 implicit any
+- **`src/types/index.ts`** — Added optional `cardCount?: number` to `StudySet`
+- **`src/pages/PublicSetsPage.tsx`** — Uses `cardCount` for display, removed `cards.term` from Fuse search
+- **`src/stores/authStore.ts`** — Calls `cleanup_stale_data()` on sign-in
+
+### Expected Impact
+- **CPU**: ~3–5x fewer upserts (debounce increase + skip-unchanged), fewer RLS policy evaluations per query (consolidated policies), cleaner tables from data pruning
+- **RAM**: Public sets page no longer loads full cards JSONB, stale data cleaned up regularly
+- **Scaling**: Same free-tier infrastructure supports significantly more users
+
+---
+
+## Step: Lift-the-Flap Printable Activity
+
+### Overview
+Added a "Lift the Flap" printable PDF activity to the Print Activities dialog. Generates a two-page-pair PDF where flap cutouts (questions) are placed over a base sheet (answers), creating a physical lift-the-flap study tool.
+
+### How It Works
+The PDF generates page pairs — for each batch of items that fit on one page:
+
+1. **Page 1 — Base Sheet**: Full-width horizontal rows with solid borders. Each cell contains the answer (definition by default). A shaded "GLUE HERE" strip on the **right edge** of each cell indicates where to apply adhesive. The answer content is centered in the area to the left of the glue strip. A small title with the set name appears at the top.
+
+2. **Page 2 — Cutout Flaps**: Same row positions and sizes as the base sheet so everything lines up. Each cell has dashed borders for cutting. Contains the question (term by default) centered in the full cell. Instruction blurb at the top: "Cut along the dotted lines. Apply glue to the shaded strip on the base sheet, then press the flap onto the matching cell."
+
+If a set has more items than fit on one page, additional page pairs are generated (base sheet page, then cutout page, then next base sheet page, etc.).
+
+### Layout Details
+- **Horizontal flaps**: Each cell spans the full content width (~186mm) with a fixed height of 28mm — wide landscape-oriented rectangles, not tall/narrow columns
+- **Glue strip**: 10mm (~1cm) wide shaded strip on the right edge of each base sheet cell with rotated "GLUE HERE" label
+- **Cell gap**: 4mm vertical gap between rows for cutting room
+- **Rows per page**: ~8 flaps fit per A4 page
+- **Content rendering**: Text auto-scales down for long content (minimum 6pt), supports images, non-Latin text (canvas rendering for Arabic/CJK)
+- **A4 format**: 210×297mm with 12mm margins
+
+### Files Changed
+
+#### `src/lib/printables.ts`
+- Added `generateLiftTheFlapPDF()` export function (~100 lines)
+- Added `renderFlapCellContent()` helper for centered text+image rendering within cells
+- Uses same shared helpers as other generators (`parseCardSideAsync`, `pdfText`, `addScaledImages`, `getLineCount`, etc.)
+
+#### `src/components/print/PrintDialog.tsx`
+- Imported `BookOpen` icon from lucide-react and `generateLiftTheFlapPDF` from printables
+- Added "Lift the Flap" entry to `nonTestActivities` array with violet/indigo gradient, BookOpen icon, minCards: 2
