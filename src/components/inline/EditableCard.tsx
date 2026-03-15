@@ -2,11 +2,13 @@
  * Inline card: term | definition. Always visible border/surface so each card is distinguishable.
  * Labels for Term / Definition; hover toolbar: drag, image, AI suggest, delete.
  * Keyboard: Enter, Tab, Escape, Backspace.
+ *
+ * Performance: TipTap editors are only mounted when the card is focused (isEditing=true).
+ * Non-focused cards render lightweight static HTML previews instead.
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
-import { motion } from 'framer-motion';
 import { GripVertical, ImagePlus, Sparkles, Trash2 } from 'lucide-react';
 import { useDebouncedCallback } from 'use-debounce';
 import { getEditorExtensions } from '../../lib/editorExtensions';
@@ -22,6 +24,11 @@ import '../../styles/editor.css';
 const TERM_PLACEHOLDER = 'Ask a question...';
 const DEF_PLACEHOLDER = 'Definition or translation...';
 
+/** Inject loading="lazy" on img tags for static preview */
+function addLazyLoading(html: string): string {
+  return html.replace(/<img(?!\s+loading=)/g, '<img loading="lazy"');
+}
+
 interface EditableCardProps {
   card: Card;
   pattern: SetPattern;
@@ -32,43 +39,64 @@ interface EditableCardProps {
   onFocusNextCard: () => void;
   onFocusPrevCard?: () => void;
   dragHandleProps?: Record<string, unknown>;
-  /** When equal to card index, focus the term field (e.g. after adding new card or Tab from previous). */
   focusedCardIndex?: number | null;
   cardIndex: number;
   validationErrors?: ValidationError[];
 }
 
-export const EditableCard = memo(function EditableCard({
+/* ─── Static content for a single pane ─── */
+
+function StaticPane({ html, placeholder, hasErrors }: { html: string; placeholder: string; hasErrors: boolean }) {
+  const isEmpty = !html || stripHtml(html).trim() === '';
+  return (
+    <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${hasErrors ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 cursor-text transition-colors duration-[var(--duration-fast)]`}>
+      {isEmpty ? (
+        <p className="inline-editor text-[var(--color-text-secondary)]/50 text-sm italic">{placeholder}</p>
+      ) : (
+        <div
+          className="inline-editor study-content"
+          dangerouslySetInnerHTML={{ __html: addLazyLoading(html) }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Active TipTap editors (child component, only mounted when isEditing) ─── */
+
+interface ActiveEditorsProps {
+  card: Card;
+  onUpdate: (updates: Partial<Card>) => void;
+  onDelete: () => void;
+  onEnterInDefinition: () => void;
+  onFocusNextCard: () => void;
+  autoFocusTerm: boolean;
+  aiSuggestion: string;
+  setAiSuggestion: (s: string) => void;
+  termErrors: ValidationError[];
+  defErrors: ValidationError[];
+  editorRefsCallback: (term: ReturnType<typeof useEditor>, def: ReturnType<typeof useEditor>) => void;
+  openImageModal: (target: 'term' | 'definition') => void;
+  showAiBadge: boolean;
+  defEmpty: boolean;
+}
+
+function ActiveEditors({
   card,
-  pattern,
-  canSuggest,
   onUpdate,
   onDelete,
   onEnterInDefinition,
   onFocusNextCard,
-  onFocusPrevCard: _onFocusPrevCard,
-  dragHandleProps,
-  focusedCardIndex,
-  cardIndex,
-  validationErrors = [],
-}: EditableCardProps) {
-  const [imageModalOpen, setImageModalOpen] = useState(false);
-  const [imageTarget, setImageTarget] = useState<'term' | 'definition' | null>(null);
-  const [aiSuggestion, setAiSuggestion] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [showAiBadge, setShowAiBadge] = useState(false);
-  const defWrapperRef = useRef<HTMLDivElement>(null);
-
-  const openImageModal = (target: 'term' | 'definition') => {
-    setImageTarget(target);
-    setImageModalOpen(true);
-  };
-
-  const hasErrors = validationErrors.length > 0;
-  const hardErrors = validationErrors.filter(e => e.severity === 'hard');
-  const termErrors = hardErrors.filter(e => !e.field || e.field === 'term' || e.code === 'EMPTY_TERM_CONTENT');
-  const defErrors = hardErrors.filter(e => e.field === 'definition' || e.code === 'EMPTY_DEFINITION_CONTENT');
-
+  autoFocusTerm,
+  aiSuggestion,
+  setAiSuggestion,
+  termErrors,
+  defErrors,
+  editorRefsCallback,
+  openImageModal,
+  showAiBadge,
+  defEmpty,
+}: ActiveEditorsProps) {
   const syncTerm = useCallback((html: string) => onUpdate({ term: html }), [onUpdate]);
   const syncDef = useCallback((html: string) => onUpdate({ definition: html }), [onUpdate]);
 
@@ -91,6 +119,12 @@ export const EditableCard = memo(function EditableCard({
     editorProps: { attributes: { class: 'inline-editor' } },
   }, [card.id]);
 
+  // Expose editors to parent for image insertion
+  useEffect(() => {
+    editorRefsCallback(termEditor, defEditor);
+  }, [termEditor, defEditor, editorRefsCallback]);
+
+  // Sync content from parent if it changes externally
   useEffect(() => {
     if (termEditor && card.term !== termEditor.getHTML()) {
       termEditor.commands.setContent(card.term || '<p></p>', { emitUpdate: false });
@@ -98,44 +132,19 @@ export const EditableCard = memo(function EditableCard({
   }, [card.term, termEditor]);
 
   useEffect(() => {
-    if (focusedCardIndex === cardIndex && termEditor) {
-      setTimeout(() => termEditor.commands.focus(), 50);
-    }
-  }, [focusedCardIndex, cardIndex, termEditor]);
-  useEffect(() => {
     if (defEditor && card.definition !== defEditor.getHTML()) {
       defEditor.commands.setContent(card.definition || '<p></p>', { emitUpdate: false });
     }
   }, [card.definition, defEditor]);
 
-  const termPlain = stripHtml(card.term).trim();
-  const defPlain = stripHtml(card.definition).trim();
-  const defEmpty = defPlain.length === 0;
-
-  const fetchSuggestion = useDebouncedCallback(async () => {
-    if (!canSuggest || !termPlain || !defEmpty || !defEditor) return;
-    setAiLoading(true);
-    setAiSuggestion('');
-    try {
-      const ai = await getAIGenerator();
-      const result = await ai.generateDefinition(termPlain, pattern.subjectDomain);
-      if (result && defPlain === '' && defEditor) {
-        setAiSuggestion(result);
-        setShowAiBadge(true);
-        setTimeout(() => setShowAiBadge(false), 2000);
-      }
-    } catch {
-      setAiSuggestion('');
-    } finally {
-      setAiLoading(false);
-    }
-  }, 800);
-
+  // Auto-focus term on mount when requested
   useEffect(() => {
-    if (termPlain && defEmpty && canSuggest) fetchSuggestion();
-    else setAiSuggestion('');
-  }, [termPlain, defEmpty, canSuggest, fetchSuggestion]);
+    if (autoFocusTerm && termEditor) {
+      setTimeout(() => termEditor.commands.focus(), 50);
+    }
+  }, [autoFocusTerm, termEditor]);
 
+  // Keyboard: definition pane
   useEffect(() => {
     if (!defEditor) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -159,8 +168,9 @@ export const EditableCard = memo(function EditableCard({
     };
     defEditor.view.dom.addEventListener('keydown', onKeyDown);
     return () => defEditor.view.dom.removeEventListener('keydown', onKeyDown);
-  }, [defEditor, onEnterInDefinition, onFocusNextCard, aiSuggestion, syncDef]);
+  }, [defEditor, onEnterInDefinition, onFocusNextCard, aiSuggestion, syncDef, setAiSuggestion]);
 
+  // Keyboard: term pane
   useEffect(() => {
     if (!termEditor) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -187,11 +197,284 @@ export const EditableCard = memo(function EditableCard({
   }, [termEditor, defEditor, onDelete]);
 
   return (
-    <motion.li
-      layout
+    <div className="flex-1 grid grid-cols-[1fr_1fr] gap-2 min-w-0">
+      {/* Term pane */}
+      <div
+        className={`min-h-[44px] px-3 py-2 rounded-l-md focus-within:bg-[var(--color-background)]/50 ${termErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}
+        data-term-pane
+      >
+        <div className="flex items-center justify-between mb-1">
+          <span className={`block text-[10px] font-semibold uppercase tracking-wider ${termErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
+            Term {termErrors.length > 0 && '(required)'}
+          </span>
+          <button
+            type="button"
+            onClick={() => openImageModal('term')}
+            className="p-1 rounded text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] opacity-0 group-hover/card:opacity-100 transition-opacity"
+            title="Add image to term"
+            aria-label="Add image to term"
+          >
+            <ImagePlus className="w-3 h-3" />
+          </button>
+        </div>
+        <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${termErrors.length > 0 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]`}>
+          <EditorContent editor={termEditor} />
+          <DiacriticsToolbar editor={termEditor} />
+        </div>
+      </div>
+      {/* Definition pane */}
+      <div
+        className={`relative min-h-[44px] px-3 py-2 rounded-r-md focus-within:bg-[var(--color-background)]/50 ${defErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}
+        data-def-pane
+      >
+        <div className="flex items-center justify-between mb-1">
+          <span className={`block text-[10px] font-semibold uppercase tracking-wider ${defErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
+            Definition {defErrors.length > 0 && '(required)'}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => openImageModal('definition')}
+              className="p-1 rounded text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] opacity-0 group-hover/card:opacity-100 transition-opacity"
+              title="Add image to definition"
+              aria-label="Add image to definition"
+            >
+              <ImagePlus className="w-3 h-3" />
+            </button>
+            {showAiBadge && (
+              <span className="text-[10px] text-[var(--color-primary)] animate-pulse">
+                AI
+              </span>
+            )}
+          </div>
+        </div>
+        {aiSuggestion && defEmpty && (
+          <span
+            className="pointer-events-none absolute left-3 top-2 right-3 text-[var(--color-text-secondary)] opacity-50 italic text-sm"
+            aria-hidden
+          >
+            {aiSuggestion}
+          </span>
+        )}
+        <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${defErrors.length > 0 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]`}>
+          <EditorContent editor={defEditor} />
+          <DiacriticsToolbar editor={defEditor} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Static content grid (no TipTap, just HTML previews) ─── */
+
+function StaticContent({
+  card,
+  termErrors,
+  defErrors,
+  openImageModal,
+  showAiBadge,
+  aiSuggestion,
+  defEmpty,
+}: {
+  card: Card;
+  termErrors: ValidationError[];
+  defErrors: ValidationError[];
+  openImageModal: (target: 'term' | 'definition') => void;
+  showAiBadge: boolean;
+  aiSuggestion: string;
+  defEmpty: boolean;
+}) {
+  return (
+    <div className="flex-1 grid grid-cols-[1fr_1fr] gap-2 min-w-0">
+      {/* Term pane */}
+      <div
+        className={`min-h-[44px] px-3 py-2 rounded-l-md ${termErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}
+        data-term-pane
+      >
+        <div className="flex items-center justify-between mb-1">
+          <span className={`block text-[10px] font-semibold uppercase tracking-wider ${termErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
+            Term {termErrors.length > 0 && '(required)'}
+          </span>
+          <button
+            type="button"
+            onClick={() => openImageModal('term')}
+            className="p-1 rounded text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] opacity-0 group-hover/card:opacity-100 transition-opacity"
+            title="Add image to term"
+            aria-label="Add image to term"
+          >
+            <ImagePlus className="w-3 h-3" />
+          </button>
+        </div>
+        <StaticPane html={card.term} placeholder={TERM_PLACEHOLDER} hasErrors={termErrors.length > 0} />
+      </div>
+      {/* Definition pane */}
+      <div
+        className={`relative min-h-[44px] px-3 py-2 rounded-r-md ${defErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}
+        data-def-pane
+      >
+        <div className="flex items-center justify-between mb-1">
+          <span className={`block text-[10px] font-semibold uppercase tracking-wider ${defErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
+            Definition {defErrors.length > 0 && '(required)'}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => openImageModal('definition')}
+              className="p-1 rounded text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] opacity-0 group-hover/card:opacity-100 transition-opacity"
+              title="Add image to definition"
+              aria-label="Add image to definition"
+            >
+              <ImagePlus className="w-3 h-3" />
+            </button>
+            {showAiBadge && (
+              <span className="text-[10px] text-[var(--color-primary)] animate-pulse">
+                AI
+              </span>
+            )}
+          </div>
+        </div>
+        {aiSuggestion && defEmpty && (
+          <span
+            className="pointer-events-none absolute left-3 top-2 right-3 text-[var(--color-text-secondary)] opacity-50 italic text-sm"
+            aria-hidden
+          >
+            {aiSuggestion}
+          </span>
+        )}
+        <StaticPane html={card.definition} placeholder={DEF_PLACEHOLDER} hasErrors={defErrors.length > 0} />
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main EditableCard ─── */
+
+export const EditableCard = memo(function EditableCard({
+  card,
+  pattern,
+  canSuggest,
+  onUpdate,
+  onDelete,
+  onEnterInDefinition,
+  onFocusNextCard,
+  onFocusPrevCard: _onFocusPrevCard,
+  dragHandleProps,
+  focusedCardIndex,
+  cardIndex,
+  validationErrors = [],
+}: EditableCardProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [imageTarget, setImageTarget] = useState<'term' | 'definition' | null>(null);
+  const [aiSuggestion, setAiSuggestion] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [showAiBadge, setShowAiBadge] = useState(false);
+  const cardRef = useRef<HTMLLIElement>(null);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const termEditorRef = useRef<ReturnType<typeof useEditor> | null>(null);
+  const defEditorRef = useRef<ReturnType<typeof useEditor> | null>(null);
+
+  const shouldAutoFocus = focusedCardIndex === cardIndex;
+
+  // Activate editing when focusedCardIndex matches
+  useEffect(() => {
+    if (shouldAutoFocus) {
+      setIsEditing(true);
+    }
+  }, [shouldAutoFocus]);
+
+  // Handle blur: unmount editors after delay if focus leaves the card entirely
+  const handleCardBlur = useCallback(() => {
+    blurTimeoutRef.current = setTimeout(() => {
+      if (cardRef.current && !cardRef.current.contains(document.activeElement)) {
+        setIsEditing(false);
+      }
+    }, 300);
+  }, []);
+
+  const handleCardFocus = useCallback(() => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setIsEditing(true);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+    };
+  }, []);
+
+  const openImageModal = useCallback((target: 'term' | 'definition') => {
+    setImageTarget(target);
+    setImageModalOpen(true);
+  }, []);
+
+  const hasErrors = validationErrors.length > 0;
+  const hardErrors = validationErrors.filter(e => e.severity === 'hard');
+  const termErrors = hardErrors.filter(e => !e.field || e.field === 'term' || e.code === 'EMPTY_TERM_CONTENT');
+  const defErrors = hardErrors.filter(e => e.field === 'definition' || e.code === 'EMPTY_DEFINITION_CONTENT');
+
+  const termPlain = stripHtml(card.term).trim();
+  const defPlain = stripHtml(card.definition).trim();
+  const defEmpty = defPlain.length === 0;
+
+  const fetchSuggestion = useDebouncedCallback(async () => {
+    if (!canSuggest || !termPlain || !defEmpty) return;
+    setAiLoading(true);
+    setAiSuggestion('');
+    try {
+      const ai = await getAIGenerator();
+      const result = await ai.generateDefinition(termPlain, pattern.subjectDomain);
+      if (result && defPlain === '') {
+        setAiSuggestion(result);
+        setShowAiBadge(true);
+        setTimeout(() => setShowAiBadge(false), 2000);
+      }
+    } catch {
+      setAiSuggestion('');
+    } finally {
+      setAiLoading(false);
+    }
+  }, 800);
+
+  useEffect(() => {
+    if (termPlain && defEmpty && canSuggest) fetchSuggestion();
+    else setAiSuggestion('');
+  }, [termPlain, defEmpty, canSuggest, fetchSuggestion]);
+
+  // Callback to receive editor refs from ActiveEditors child
+  const editorRefsCallback = useCallback((term: ReturnType<typeof useEditor>, def: ReturnType<typeof useEditor>) => {
+    termEditorRef.current = term;
+    defEditorRef.current = def;
+  }, []);
+
+  const handleImageSelect = useCallback((base64: string) => {
+    const targetEditor = imageTarget === 'term' ? termEditorRef.current : defEditorRef.current;
+    if (targetEditor) {
+      targetEditor.chain().focus().insertContent(`<img src="${base64}" alt="" />`).run();
+    } else {
+      // Fallback: update card data directly if editors aren't mounted
+      if (imageTarget === 'term') {
+        onUpdate({ term: (card.term || '<p></p>').replace(/<\/p>$/, `<img src="${base64}" alt="" /></p>`) });
+      } else {
+        onUpdate({ definition: (card.definition || '<p></p>').replace(/<\/p>$/, `<img src="${base64}" alt="" /></p>`) });
+      }
+    }
+    setImageModalOpen(false);
+    setImageTarget(null);
+  }, [imageTarget, card.term, card.definition, onUpdate]);
+
+  return (
+    <li
+      ref={cardRef}
+      onFocusCapture={handleCardFocus}
+      onBlurCapture={handleCardBlur}
       className={`group/card relative rounded-[var(--radius-card)] border ${hasErrors ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] shadow-[var(--shadow-sm)] hover:border-[var(--color-text-secondary)]/25 focus-within:border-[var(--color-border-focus)] focus-within:ring-1 focus-within:ring-[var(--color-primary)]/20 transition-colors duration-[var(--duration-fast)]`}
     >
       <div className="flex items-stretch min-h-[52px]">
+        {/* Drag handle + card number */}
         <div
           className="flex items-center gap-1 pl-2 pr-2 cursor-grab active:cursor-grabbing text-[var(--color-text-secondary)]"
           {...(dragHandleProps ?? {})}
@@ -200,70 +483,38 @@ export const EditableCard = memo(function EditableCard({
           <span className="text-sm font-semibold tabular-nums text-[var(--color-primary)] select-none min-w-[1.25rem] text-center">{cardIndex + 1}</span>
           <GripVertical className="w-4 h-4 opacity-40 group-hover/card:opacity-100 transition-opacity" />
         </div>
-        <div className="flex-1 grid grid-cols-[1fr_1fr] gap-2 min-w-0">
-          <div
-            className={`min-h-[44px] px-3 py-2 rounded-l-md focus-within:bg-[var(--color-background)]/50 ${termErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}
-            data-term-pane
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className={`block text-[10px] font-semibold uppercase tracking-wider ${termErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
-                Term {termErrors.length > 0 && '(required)'}
-              </span>
-              <button
-                type="button"
-                onClick={() => openImageModal('term')}
-                className="p-1 rounded text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] opacity-0 group-hover/card:opacity-100 transition-opacity"
-                title="Add image to term"
-                aria-label="Add image to term"
-              >
-                <ImagePlus className="w-3 h-3" />
-              </button>
-            </div>
-            <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${termErrors.length > 0 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]`}>
-              <EditorContent editor={termEditor} />
-              <DiacriticsToolbar editor={termEditor} />
-            </div>
-          </div>
-          <div
-            ref={defWrapperRef}
-            className={`relative min-h-[44px] px-3 py-2 rounded-r-md focus-within:bg-[var(--color-background)]/50 ${defErrors.length > 0 ? 'bg-[var(--color-danger)]/5' : ''}`}
-            data-def-pane
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className={`block text-[10px] font-semibold uppercase tracking-wider ${defErrors.length > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'}`} aria-hidden>
-                Definition {defErrors.length > 0 && '(required)'}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => openImageModal('definition')}
-                  className="p-1 rounded text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] opacity-0 group-hover/card:opacity-100 transition-opacity"
-                  title="Add image to definition"
-                  aria-label="Add image to definition"
-                >
-                  <ImagePlus className="w-3 h-3" />
-                </button>
-                {showAiBadge && (
-                  <span className="text-[10px] text-[var(--color-primary)] animate-pulse">
-                    AI
-                  </span>
-                )}
-              </div>
-            </div>
-            {aiSuggestion && defEmpty && (
-              <span
-                className="pointer-events-none absolute left-3 top-2 right-3 text-[var(--color-text-secondary)] opacity-50 italic text-sm"
-                aria-hidden
-              >
-                {aiSuggestion}
-              </span>
-            )}
-            <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${defErrors.length > 0 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 focus-within:border-[var(--color-border-focus)] transition-colors duration-[var(--duration-fast)]`}>
-              <EditorContent editor={defEditor} />
-              <DiacriticsToolbar editor={defEditor} />
-            </div>
-          </div>
-        </div>
+
+        {/* Card content: either active editors or static previews */}
+        {isEditing ? (
+          <ActiveEditors
+            card={card}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onEnterInDefinition={onEnterInDefinition}
+            onFocusNextCard={onFocusNextCard}
+            autoFocusTerm={shouldAutoFocus}
+            aiSuggestion={aiSuggestion}
+            setAiSuggestion={setAiSuggestion}
+            termErrors={termErrors}
+            defErrors={defErrors}
+            editorRefsCallback={editorRefsCallback}
+            openImageModal={openImageModal}
+            showAiBadge={showAiBadge}
+            defEmpty={defEmpty}
+          />
+        ) : (
+          <StaticContent
+            card={card}
+            termErrors={termErrors}
+            defErrors={defErrors}
+            openImageModal={openImageModal}
+            showAiBadge={showAiBadge}
+            aiSuggestion={aiSuggestion}
+            defEmpty={defEmpty}
+          />
+        )}
+
+        {/* Action buttons */}
         <div className="flex items-center gap-0.5 pr-2 opacity-60 group-hover/card:opacity-100 transition-opacity">
           {canSuggest && defEmpty && (
             <button
@@ -288,6 +539,8 @@ export const EditableCard = memo(function EditableCard({
           </button>
         </div>
       </div>
+
+      {/* Validation errors */}
       {hardErrors.length > 0 && (
         <div className="px-3 py-2 bg-[var(--color-danger)]/5 border-t border-[var(--color-danger)]/20">
           <div className="flex flex-col gap-1">
@@ -299,20 +552,17 @@ export const EditableCard = memo(function EditableCard({
           </div>
         </div>
       )}
+
+      {/* Image search modal */}
       <ImageSearchModal
         open={imageModalOpen}
         onClose={() => {
           setImageModalOpen(false);
           setImageTarget(null);
         }}
-        onSelect={(base64) => {
-          const targetEditor = imageTarget === 'term' ? termEditor : defEditor;
-          targetEditor?.chain().focus().insertContent(`<img src="${base64}" alt="" />`).run();
-          setImageModalOpen(false);
-          setImageTarget(null);
-        }}
+        onSelect={handleImageSelect}
         initialQuery={sanitizeSearchQuery(card.term || '')}
       />
-    </motion.li>
+    </li>
   );
 });

@@ -95,6 +95,7 @@ export function SetDetailPage() {
   const [showCardFilter, setShowCardFilter] = useState(false);
   const [cardErrors, setCardErrors] = useState<Record<string, ValidationError[]>>({});
   const [validationActivated, setValidationActivated] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(20);
   const moreRef = useRef<HTMLDivElement>(null);
 
   localSetRef.current = localSet;
@@ -155,7 +156,10 @@ export function SetDetailPage() {
     });
     setDirty(true);
     debouncedSave();
-    setFocusedCardIndex(atIndex ?? localSetRef.current?.cards.length ?? 0);
+    const insertIndex = atIndex ?? localSetRef.current?.cards.length ?? 0;
+    setFocusedCardIndex(insertIndex);
+    // Auto-expand visible cards if inserting beyond current view
+    setVisibleCount((prev) => Math.max(prev, insertIndex + 1));
   }, [debouncedSave]);
 
   const handleDeleteCard = useCallback((cardId: string) => {
@@ -760,7 +764,7 @@ export function SetDetailPage() {
           )}
 
           <ul className="space-y-3">
-            {cards.map((card, index) => (
+            {cards.slice(0, visibleCount).map((card, index) => (
               <EditableCard
                 key={card.id}
                 card={card}
@@ -777,6 +781,16 @@ export function SetDetailPage() {
               />
             ))}
           </ul>
+
+          {cards.length > visibleCount && (
+            <button
+              type="button"
+              onClick={() => setVisibleCount((prev) => prev + 20)}
+              className="mt-4 w-full rounded-[var(--radius-card)] border border-[var(--color-border)] py-3 flex items-center justify-center gap-2 text-sm text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/10 transition-all duration-[var(--duration-normal)] font-medium"
+            >
+              Show more cards ({visibleCount} of {cards.length})
+            </button>
+          )}
 
           {isOwner && (
             <>

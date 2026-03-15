@@ -69,7 +69,7 @@ export function getEditorExtensions(placeholder: string) {
       hardBreak: false,
     }),
     Placeholder.configure({ placeholder }),
-    Image.configure({ inline: false, allowBase64: true }),
+    Image.configure({ inline: false, allowBase64: true, HTMLAttributes: { loading: 'lazy' } }),
     Highlight.configure({ multicolor: false }),
     ImagePasteHandler,
   ];

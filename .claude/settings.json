@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(grep -n \"navigator.onLine\\\\|offline\\\\|online\\\\|connection\\\\|sync.*offline\\\\|pending.*sync\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src/**/*.ts /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src/**/*.tsx)",
-      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")"
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
+      "Bash(grep -r \"virtualiz\\\\|virtuall\\\\|windowing\\\\|intersection\\\\|IntersectionObserver\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src --include=*.tsx --include=*.ts)",
+      "Bash(grep -r \"React.memo\\\\|useMemo\\\\|useCallback\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src --include=*.tsx --include=*.ts)",
+      "Bash(grep -r \"pagination\\\\|infinite.*scroll\\\\|loadMore\\\\|fetch.*card\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src --include=*.tsx --include=*.ts)",
+      "Bash(grep -r \"img\\\\|image\\\\|src=\\\\|blob\\\\|base64\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src/lib --include=*.ts --include=*.tsx)",
+      "Bash(find /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src -name *Mode.tsx)",
+      "Bash(grep -r \"React.memo\\\\|memo\\(\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src/components --include=*.tsx)",
+      "Bash(grep -r \"cache\\\\|Cache\\\\|persist\\\\|Persist\\\\|IndexedDB\\\\|dexie\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src --include=*.ts --include=*.tsx)",
+      "Bash(grep -r \"dangerouslySetInnerHTML\\\\|innerHTML\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src/components --include=*.tsx)"
     ]
   }
 }
