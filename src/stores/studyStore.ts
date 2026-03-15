@@ -80,19 +80,23 @@ export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
     if (user) {
       try {
         const cloudSets = await fetchUserSets(user.id);
+        const cloudIds = new Set(cloudSets.map((s) => s.id));
         for (const s of cloudSets) await db.putSet(s);
-        set({ sets: cloudSets, loaded: true });
-      } catch {
-        // Cloud fetch failed — filter local sets to only this user's sets
+        // Include local sets that haven't been synced to cloud yet
         const allLocal = await db.getAllSets();
-        const userSets = allLocal.filter((s) => s.userId === user.id);
+        const unsyncedLocal = allLocal.filter(
+          (s) => !cloudIds.has(s.id) && (!s.userId || s.userId === user.id)
+        );
+        set({ sets: [...cloudSets, ...unsyncedLocal], loaded: true });
+      } catch {
+        // Cloud fetch failed — show this user's sets + unowned local sets
+        const allLocal = await db.getAllSets();
+        const userSets = allLocal.filter((s) => s.userId === user.id || !s.userId);
         set({ sets: userSets, loaded: true });
       }
     } else {
-      // Not signed in — show only sets without an owner (locally-created)
-      const allLocal = await db.getAllSets();
-      const localOnly = allLocal.filter((s) => !s.userId);
-      set({ sets: localOnly, loaded: true });
+      const sets = await db.getAllSets();
+      set({ sets, loaded: true });
     }
   },
 
@@ -127,6 +131,7 @@ export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
       title = maxNum === 0 ? 'Untitled Set' : `Untitled Set ${maxNum + 1}`;
     }
     
+    const user = useAuthStore.getState().user;
     const studySet: StudySet = {
       id: uuid(),
       title,
@@ -142,10 +147,10 @@ export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
       folderId: partial.folderId,
       effectivePermissions: partial.effectivePermissions,
       ...partial,
+      ...(user ? { userId: user.id } : {}),
     };
     await db.putSet(studySet);
     set((s) => ({ sets: [...s.sets, studySet] }));
-    const user = useAuthStore.getState().user;
     if (user) {
       try { await syncSetToCloud(studySet, user.id); } catch { /* ignore */ }
     }
