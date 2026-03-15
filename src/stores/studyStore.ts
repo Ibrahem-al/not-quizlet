@@ -65,6 +65,17 @@ export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
   publicSetsLoaded: false,
 
   loadSets: async () => {
+    // Wait for auth to finish initializing so we know whether a user is signed in
+    const auth = useAuthStore.getState();
+    if (!auth.initialized) {
+      await new Promise<void>((resolve) => {
+        const unsub = useAuthStore.subscribe((state) => {
+          if (state.initialized) { unsub(); resolve(); }
+        });
+        // Re-check in case it initialized between getState() and subscribe()
+        if (useAuthStore.getState().initialized) { unsub(); resolve(); }
+      });
+    }
     const user = useAuthStore.getState().user;
     if (user) {
       try {
@@ -72,12 +83,16 @@ export const useStudyStore = create<StudyState & StudyActions>((set, get) => ({
         for (const s of cloudSets) await db.putSet(s);
         set({ sets: cloudSets, loaded: true });
       } catch {
-        const sets = await db.getAllSets();
-        set({ sets, loaded: true });
+        // Cloud fetch failed — filter local sets to only this user's sets
+        const allLocal = await db.getAllSets();
+        const userSets = allLocal.filter((s) => s.userId === user.id);
+        set({ sets: userSets, loaded: true });
       }
     } else {
-      const sets = await db.getAllSets();
-      set({ sets, loaded: true });
+      // Not signed in — show only sets without an owner (locally-created)
+      const allLocal = await db.getAllSets();
+      const localOnly = allLocal.filter((s) => !s.userId);
+      set({ sets: localOnly, loaded: true });
     }
   },
 

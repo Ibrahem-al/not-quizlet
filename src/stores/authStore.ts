@@ -90,7 +90,12 @@ export const useAuthStore = create<AuthState & AuthActions>((set, get) => ({
 
   signIn: async (email, password) => {
     if (!supabase) return { error: new Error('Supabase not configured') };
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    // Set user/session immediately so loadSets sees the user before navigation
+    if (!error && data.session) {
+      set({ user: data.session.user, session: data.session });
+    }
 
     // Fire-and-forget: clean up expired sessions & stale audit data
     if (!error) {

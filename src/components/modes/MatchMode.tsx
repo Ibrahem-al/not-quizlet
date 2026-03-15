@@ -6,6 +6,7 @@ import { MatchTile, type MatchTileData } from '../study/MatchTile';
 import { Timer } from '../study/Timer';
 import { shuffle } from '../../lib/algorithms';
 import { buildEquivalenceGroups, areMatchableByContent } from '../../lib/equivalence';
+import { isImageOnly, hasTextContent } from '../../lib/contentHelpers';
 import type { Card } from '../../types';
 
 const spring = { type: 'spring' as const, stiffness: 300, damping: 30 };
@@ -49,7 +50,14 @@ export function MatchMode({ cards, onExit }: MatchModeProps) {
     // Determine which is term, which is definition
     const termTile = dragged.type === 'term' ? dragged : target;
     const defTile = dragged.type === 'definition' ? dragged : target;
-    if (!areMatchableByContent(termTile.text, defTile.text, groups)) return;
+    // Image-only content can't be matched by text; fall back to card ID
+    const termNoText = isImageOnly(termTile.text) || !hasTextContent(termTile.text);
+    const defNoText = isImageOnly(defTile.text) || !hasTextContent(defTile.text);
+    if (termNoText || defNoText) {
+      if (termTile.cardId !== defTile.cardId) return;
+    } else if (!areMatchableByContent(termTile.text, defTile.text, groups)) {
+      return;
+    }
     setMatchedTiles((prev) => {
       const next = new Set(prev);
       next.add(dragged.tileIndex);

@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npx tsc:*)",
       "Bash(npx vite:*)",
-      "Bash(find c:UsersibrahOneDriveDocumentsCursornot_quizletsrctypes -name *.ts -type f)"
+      "Bash(find c:UsersibrahOneDriveDocumentsCursornot_quizletsrctypes -name *.ts -type f)",
+      "Bash(grep -r \"redirect\\\\|RPC\\\\|auth\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/supabase --include=*.sql --include=*.ts)"
     ]
   }
 }

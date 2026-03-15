@@ -69,7 +69,9 @@ export function MatchTile({
       onDragOver={handleDragOver}
     >
       <motion.div
-        className="text-base text-[var(--color-text)] line-clamp-2 text-center study-content"
+        className={`text-base text-[var(--color-text)] text-center study-content ${
+          (text.match(/<img[\s>]/gi) || []).length > 2 ? 'overflow-auto' : 'line-clamp-2'
+        }`}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         transition={spring}
