@@ -1335,3 +1335,102 @@ If a set has more items than fit on one page, additional page pairs are generate
 #### `src/components/print/PrintDialog.tsx`
 - Imported `BookOpen` icon from lucide-react and `generateLiftTheFlapPDF` from printables
 - Added "Lift the Flap" entry to `nonTestActivities` array with violet/indigo gradient, BookOpen icon, minCards: 2
+
+---
+
+## Cloud Sync & Set Loading Fixes
+
+### Problem
+Users were unable to see their correct sets after signing in. The app showed all sets from the device (IndexedDB) instead of only the signed-in user's cloud sets. Additionally, some sets created locally were disappearing after cloud sync.
+
+### Root Causes
+1. **IndexedDB was a shared dumping ground** — `loadSets` fallback used `db.getAllSets()` which returned every set ever cached locally, from all users and anonymous sessions
+2. **`addSet` never stamped `userId`** on locally-created sets, so filtering by user excluded them
+3. **Cloud success path showed only cloud sets** — sets created locally that hadn't been synced yet would vanish
+
+### Fixes Applied
+
+#### `src/stores/studyStore.ts`
+- **`loadSets` (signed in, cloud succeeds)**: Now merges cloud sets with unsynced local sets (sets not in cloud that either have no owner or belong to current user)
+- **`loadSets` (signed in, cloud fails)**: Filters IndexedDB to `userId === user.id || !userId` instead of showing everything
+- **`loadSets` (not signed in)**: Shows all local sets (no filter — anonymous users see everything on device)
+- **`addSet`**: Now stamps `userId` on new sets when user is signed in, so filtering works correctly going forward
+
+---
+
+## Skills-Based Improvements (8 Claude Skills Applied)
+
+Analyzed 12 available skills in `.claude/skills/` and applied 8 that addressed real gaps in the app. 4 were skipped (Dark Mode — already solid, Frontend Design — already distinctive, Algorithmic Art — not relevant, SVG Graphics — Lucide covers it).
+
+### Skill 08 — Accessibility (WCAG 2.1 AA)
+
+#### Files Changed
+- **`src/components/layout/AppLayout.tsx`** — Added skip-to-content link (`<a href="#main-content">`) that's screen-reader-only until focused. Added `id="main-content"` to `<main>`. Changed nav `aria-label` from "Breadcrumb" to "Main navigation".
+- **`src/components/ui/Input.tsx`** — Connected `<label>` to `<input>` via `htmlFor`/`id` using `useId()`. Added `aria-invalid` when error present. Added `aria-describedby` linking to error/helper text. Added `role="alert"` on error messages. Added `aria-hidden` on decorative icon wrapper.
+- **`src/components/study/Flashcard.tsx`** — Added `role="region"`, `aria-label`, and `aria-roledescription="flashcard"` to card container. Made the flip target focusable (`tabIndex={0}`) with `role="button"` and Enter key handler.
+- **`src/components/study/MatchTile.tsx`** — Added `tabIndex={0}`, `role="button"`, `aria-pressed` for selected state. Added keyboard handler (Enter/Space to select). Added `onSelect` callback prop for click-to-select as keyboard alternative to drag. Added `selected` prop with visual ring indicator. Added `aria-hidden` on matched tiles.
+- **`src/components/modes/MatchMode.tsx`** — Added click-to-select logic (`selectedTile` state + `handleSelect`) as keyboard-accessible alternative to drag-and-drop. Added `aria-live="polite"` and `aria-atomic="true"` on match counter for screen reader announcements.
+- **`src/pages/StatsPage.tsx`** — Added `aria-hidden="true"` on chart containers (charts are visual-only). Added screen-reader-only `<table>` elements with `<caption>` behind both pie chart and bar chart for accessible data.
+- **`src/components/modes/games/memory-card-flip/MemoryCard.tsx`** — Already had good accessibility (role="button", tabIndex, aria-label, keyboard handler).
+- **`src/components/ui/ToastManager.tsx`** — Already had `role="status"` and `aria-live` attributes.
+
+### Skill 04 — Animation Effects
+
+#### Files Changed
+- **`src/pages/HomePage.tsx`** — Added `motion` import from framer-motion. Changed set card `<li>` to `<motion.li>` with staggered entrance animation (`opacity: 0, y: 16` → `opacity: 1, y: 0`, delay capped at 0.4s).
+- **`src/pages/StatsPage.tsx`** — Added `AnimatedCounter` component that counts up from 0 to target value over 600ms with ease-out cubic easing. Applied to all three stat cards (total reviews, time studied, best streak). Added `cardEntrance` animation preset. Wrapped stat cards and chart sections in `<motion.div>` / `<motion.section>` with staggered delays (0s, 0.08s, 0.16s, 0.24s, 0.32s).
+
+### Skill 03 — Responsive Layout
+
+#### Files Changed
+- **`src/components/layout/AppLayout.tsx`** — Complete rewrite:
+  - Extracted nav links into shared `NavLinks` component with `navLinkClasses` helper (DRY)
+  - Added hamburger menu button (`<Menu>` / `<X>` icons) visible on mobile (`md:hidden`)
+  - Added mobile nav drawer that slides down from header with all nav links
+  - Mobile drawer includes sidebar content when present (folders accessible on mobile)
+  - Desktop nav links hidden on mobile (`hidden md:flex`)
+  - Breadcrumbs hidden on small screens (`hidden sm:flex`)
+  - Main content area uses `md:flex` instead of `flex` for sidebar layout
+- **`src/components/modes/MatchMode.tsx`** — Changed match grid gap from fixed `gap-3` to fluid `gap-[clamp(0.5rem,2vw,0.75rem)]`.
+
+### Skill 09 — Performance Optimization
+
+#### Files Changed
+- **Deleted `src/App.css`** — Unused Vite scaffold CSS (`.logo`, `.card`, `.read-the-docs` classes). Not imported anywhere.
+- **Deleted `src/index.css`** — Unused Vite scaffold CSS (base styles that conflicted with `globals.css`). Not imported anywhere.
+- **`src/components/inline/EditableCard.tsx`** — Wrapped in `React.memo()` to prevent unnecessary re-renders when sibling cards change. Added `memo` import.
+- **`index.html`** — Added `<link rel="preload" as="style">` for Google Fonts CSS. Changed font stylesheet to non-blocking: `media="print" onload="this.media='all'"` so fonts don't block initial render.
+- **`src/lib/ocr.ts`** — Already had dynamic `import('tesseract.js')` (no change needed).
+
+### Skill 12 — Data Visualization
+
+#### Files Changed
+- **`src/pages/StatsPage.tsx`** — Added `StudyHeatmap` component:
+  - GitHub-style contribution graph showing ~12 weeks of study activity
+  - Uses `byDay` data from `useStudyStats` hook (exposed `byDay` in return value)
+  - 4-level intensity scale using `rgba(var(--color-primary-rgb), ...)` for theme consistency
+  - Day labels (Mon, Wed, Fri) on left axis
+  - Hover tooltips showing date and review count
+  - Legend bar (Less → More) below the heatmap
+  - Responsive with `overflow-x-auto` for small screens
+  - Placed between pie chart and bar chart sections
+
+### Skill 05 — Color & Typography
+
+#### Files Changed
+- **`src/styles/globals.css`** — Added typography scale CSS custom properties using Major Third ratio (1.25) with fluid `clamp()` sizing:
+  - `--font-size-xs` through `--font-size-2xl`
+  - Values scale between viewport widths for fluid typography
+- **`src/components/modes/SpinnerMode.tsx`** — Replaced hardcoded hex color array (`#6366f1`, `#ec4899`, etc.) with HSL-based palette. Same visual hues but using HSL format for consistency with design system approach.
+- **`src/components/modes/games/memory-card-flip/MemoryCard.tsx`** — Replaced hardcoded Tailwind gradient (`from-violet-500 to-purple-600`) with theme-aware `rgba(var(--color-primary-rgb), ...)` gradient. Border also uses theme token.
+
+### Skill 11 — Form Design
+
+#### Files Changed
+- **`src/pages/SignUpPage.tsx`**:
+  - Added `emailTouched` and `confirmTouched` state for blur-based inline validation
+  - Email input shows "Enter a valid email address" error on blur if format is invalid
+  - Confirm password input shows mismatch error on blur (using existing `passwordsMatch` util)
+  - Removed redundant standalone password match indicator section (now handled inline via Input's error prop)
+  - Fixed password toggle positioning from magic `top-[34px]` to `top-[2.35rem]`
+- **`src/pages/SignInPage.tsx`** — Fixed password toggle positioning from `top-[34px]` to `top-[2.35rem]`

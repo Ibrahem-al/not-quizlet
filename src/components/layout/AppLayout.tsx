@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Globe, Users, Library } from 'lucide-react';
+import { Plus, Globe, Users, Library, Menu, X } from 'lucide-react';
 import { Button } from '../ui';
 import { useAuthStore } from '../../stores/authStore';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -54,76 +55,65 @@ function AuthButton() {
   );
 }
 
-function MySetsLink() {
+const navLinkClasses = (isActive: boolean) =>
+  `flex items-center gap-1.5 text-sm font-medium transition-colors duration-[var(--duration-fast)] px-3 py-1.5 rounded-[var(--radius-sm)] ${
+    isActive
+      ? 'text-[var(--color-primary)] bg-[var(--color-primary-muted)]'
+      : 'text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-surface-muted)]'
+  }`;
+
+function NavLinks({ onClick }: { onClick?: () => void }) {
   const { t } = useTranslation();
   const location = useLocation();
-  const isActive = location.pathname === '/';
 
   return (
-    <Link
-      to="/"
-      className={`flex items-center gap-1.5 text-sm font-medium transition-colors duration-[var(--duration-fast)] px-3 py-1.5 rounded-[var(--radius-sm)]
-        ${isActive 
-          ? 'text-[var(--color-primary)] bg-[var(--color-primary-muted)]' 
-          : 'text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-surface-muted)]'
-        }`}
-    >
-      <Library className="w-4 h-4" />
-      {t('yourStudySets')}
-    </Link>
-  );
-}
-
-function ExploreLink() {
-  const { t } = useTranslation();
-  const location = useLocation();
-  const isActive = location.pathname === '/explore';
-
-  return (
-    <Link
-      to="/explore"
-      className={`flex items-center gap-1.5 text-sm font-medium transition-colors duration-[var(--duration-fast)] px-3 py-1.5 rounded-[var(--radius-sm)]
-        ${isActive 
-          ? 'text-[var(--color-primary)] bg-[var(--color-primary-muted)]' 
-          : 'text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-surface-muted)]'
-        }`}
-    >
-      <Globe className="w-4 h-4" />
-      {t('explore')}
-    </Link>
-  );
-}
-
-function SharedLink() {
-  const { t } = useTranslation();
-  const location = useLocation();
-  const isActive = location.pathname === '/shared';
-
-  return (
-    <Link
-      to="/shared"
-      className={`flex items-center gap-1.5 text-sm font-medium transition-colors duration-[var(--duration-fast)] px-3 py-1.5 rounded-[var(--radius-sm)]
-        ${isActive 
-          ? 'text-[var(--color-primary)] bg-[var(--color-primary-muted)]' 
-          : 'text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-surface-muted)]'
-        }`}
-    >
-      <Users className="w-4 h-4" />
-      {t('sharedWithMe')}
-    </Link>
+    <>
+      <Link to="/" className={navLinkClasses(location.pathname === '/')} onClick={onClick}>
+        <Library className="w-4 h-4" />
+        {t('yourStudySets')}
+      </Link>
+      <Link to="/explore" className={navLinkClasses(location.pathname === '/explore')} onClick={onClick}>
+        <Globe className="w-4 h-4" />
+        {t('explore')}
+      </Link>
+      <Link to="/shared" className={navLinkClasses(location.pathname === '/shared')} onClick={onClick}>
+        <Users className="w-4 h-4" />
+        {t('sharedWithMe')}
+      </Link>
+    </>
   );
 }
 
 export function AppLayout({ children, breadcrumbs, headerRight, sidebar }: AppLayoutProps) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-[var(--color-background)] transition-colors duration-[var(--duration-slow)]">
+      {/* Skip to main content link */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:rounded-lg focus:bg-[var(--color-primary)] focus:text-white focus:shadow-lg focus:outline-none"
+      >
+        Skip to main content
+      </a>
       <header className="sticky top-0 z-10 bg-[var(--color-surface)]/90 backdrop-blur-md border-b border-[var(--color-border)] shadow-[var(--shadow-sm)] transition-colors duration-[var(--duration-slow)]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center gap-4">
+            {/* Mobile hamburger */}
+            <button
+              type="button"
+              className="md:hidden p-1.5 rounded-[var(--radius-sm)] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] transition-colors"
+              onClick={() => setMobileMenuOpen((o) => !o)}
+              aria-expanded={mobileMenuOpen}
+              aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+
             {/* Left: Logo + Navigation */}
             <nav
               className="flex items-center gap-2 text-sm shrink-0"
-              aria-label="Breadcrumb"
+              aria-label="Main navigation"
             >
               <Link
                 to="/"
@@ -131,13 +121,14 @@ export function AppLayout({ children, breadcrumbs, headerRight, sidebar }: AppLa
               >
                 StudyFlow
               </Link>
-              <MySetsLink />
-              <ExploreLink />
-              <SharedLink />
+              {/* Desktop nav links */}
+              <div className="hidden md:flex items-center gap-1">
+                <NavLinks />
+              </div>
               {breadcrumbs?.map((item, i) => (
                 <span
                   key={i}
-                  className="flex items-center gap-2 text-[var(--color-text-secondary)] shrink-0"
+                  className="flex items-center gap-2 text-[var(--color-text-secondary)] shrink-0 hidden sm:flex"
                 >
                   <span className="opacity-50" aria-hidden>/</span>
                   {item.href ? (
@@ -169,10 +160,25 @@ export function AppLayout({ children, breadcrumbs, headerRight, sidebar }: AppLa
             </div>
           </div>
         </div>
+
+        {/* Mobile nav drawer */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+            <nav className="flex flex-col gap-1" aria-label="Mobile navigation">
+              <NavLinks onClick={() => setMobileMenuOpen(false)} />
+            </nav>
+            {/* Mobile sidebar content */}
+            {sidebar && (
+              <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+                {sidebar}
+              </div>
+            )}
+          </div>
+        )}
       </header>
-      
+
       {/* Main content with optional sidebar */}
-      <div className={`mx-auto px-4 sm:px-6 py-6 sm:py-8 ${sidebar ? 'max-w-6xl flex gap-6' : 'max-w-4xl'}`}>
+      <div className={`mx-auto px-4 sm:px-6 py-6 sm:py-8 ${sidebar ? 'max-w-6xl md:flex gap-6' : 'max-w-4xl'}`}>
         {sidebar && (
           <aside className="w-64 shrink-0 hidden md:block">
             <div className="sticky top-24 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] shadow-sm overflow-hidden">
@@ -180,7 +186,7 @@ export function AppLayout({ children, breadcrumbs, headerRight, sidebar }: AppLa
             </div>
           </aside>
         )}
-        <main className="flex-1 min-w-0">
+        <main id="main-content" className="flex-1 min-w-0">
           {children}
         </main>
       </div>

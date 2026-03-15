@@ -35,7 +35,7 @@ export function MemoryCard({ content, type, isFlipped, isMatched, onClick }: Mem
         transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
       >
         {/* Back face (face-down) */}
-        <div className="absolute inset-0 rounded-xl [backface-visibility:hidden] bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg flex items-center justify-center border-2 border-violet-400/30">
+        <div className="absolute inset-0 rounded-xl [backface-visibility:hidden] shadow-lg flex items-center justify-center border-2 border-[rgba(var(--color-primary-rgb),0.3)]" style={{ background: 'linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.85), rgba(var(--color-primary-rgb), 1))' }}>
           <span className="text-3xl select-none">?</span>
         </div>
 

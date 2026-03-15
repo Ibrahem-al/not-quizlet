@@ -129,11 +129,20 @@ export function Flashcard({
       dragElastic={0.2}
       onDragEnd={handleDragEnd}
       whileTap={{ scale: 0.98 }}
+      role="region"
+      aria-label={`Flashcard: ${flipped ? 'definition side' : 'term side'}`}
+      aria-roledescription="flashcard"
     >
       <motion.div
         className="relative w-full min-h-[280px] rounded-[var(--radius-card)] overflow-hidden"
         style={{ transformStyle: 'preserve-3d', perspective: 1000 }}
         onClick={handleFlip}
+        tabIndex={0}
+        role="button"
+        aria-label={flipped ? 'Flip to term' : 'Flip to definition'}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') handleFlip();
+        }}
       >
         <motion.div
           className="relative w-full min-h-[280px] rounded-[var(--radius-card)] bg-[var(--color-surface)] shadow-[var(--shadow-card)]"

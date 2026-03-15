@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"navigator.onLine\\\\|offline\\\\|online\\\\|connection\\\\|sync.*offline\\\\|pending.*sync\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src/**/*.ts /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src/**/*.tsx)",
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")"
+    ]
+  }
+}

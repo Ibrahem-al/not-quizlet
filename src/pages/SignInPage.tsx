@@ -76,7 +76,7 @@ export function SignInPage() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-[34px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text)] transition-colors"
+              className="absolute right-3 top-[2.35rem] text-[var(--color-text-tertiary)] hover:text-[var(--color-text)] transition-colors"
               tabIndex={-1}
             >
               {showPassword ? (

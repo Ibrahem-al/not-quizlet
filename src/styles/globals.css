@@ -62,6 +62,15 @@
   --radius-button: 10px;
   --radius-full: 9999px;
   
+  /* Typography Scale (Major Third 1.25) */
+  --font-size-xs: clamp(0.64rem, 0.59rem + 0.24vw, 0.75rem);
+  --font-size-sm: clamp(0.8rem, 0.74rem + 0.3vw, 0.875rem);
+  --font-size-base: clamp(1rem, 0.93rem + 0.36vw, 1rem);
+  --font-size-md: clamp(1.125rem, 1.04rem + 0.42vw, 1.25rem);
+  --font-size-lg: clamp(1.25rem, 1.16rem + 0.48vw, 1.5rem);
+  --font-size-xl: clamp(1.563rem, 1.45rem + 0.56vw, 1.875rem);
+  --font-size-2xl: clamp(1.953rem, 1.81rem + 0.71vw, 2.25rem);
+
   /* Motion */
   --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
   --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);

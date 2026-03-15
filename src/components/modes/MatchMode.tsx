@@ -41,6 +41,7 @@ export function MatchMode({ cards, onExit }: MatchModeProps) {
   const tiles = useMemo(() => buildTiles(cards, pairCount), [cards]);
   const groups = useMemo(() => buildEquivalenceGroups(cards), [cards]);
   const [matchedTiles, setMatchedTiles] = useState<Set<number>>(new Set());
+  const [selectedTile, setSelectedTile] = useState<MatchTileData | null>(null);
   const [running, setRunning] = useState(true);
   const [done, setDone] = useState(false);
   const [finalTimeMs, setFinalTimeMs] = useState<number | null>(null);
@@ -64,6 +65,20 @@ export function MatchMode({ cards, onExit }: MatchModeProps) {
       next.add(target.tileIndex);
       return next;
     });
+  };
+
+  const handleSelect = (tile: MatchTileData) => {
+    if (matchedTiles.has(tile.tileIndex)) return;
+    if (!selectedTile) {
+      setSelectedTile(tile);
+      return;
+    }
+    if (selectedTile.tileIndex === tile.tileIndex) {
+      setSelectedTile(null);
+      return;
+    }
+    handleDrop(selectedTile, tile);
+    setSelectedTile(null);
   };
 
   const matchedCount = Math.floor(matchedTiles.size / 2);
@@ -90,8 +105,8 @@ export function MatchMode({ cards, onExit }: MatchModeProps) {
     <div className="flex flex-col min-h-screen bg-[var(--color-background)]">
       <header className="flex items-center justify-between p-4 sm:px-6 border-b border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)]">
         <Timer running={running} className="text-lg" />
-        <span className="font-mono text-sm text-[var(--color-text-secondary)]">
-          {matchedCount} / {pairCount} pairs
+        <span className="font-mono text-sm text-[var(--color-text-secondary)]" aria-live="polite" aria-atomic="true">
+          {matchedCount} / {pairCount} pairs matched
         </span>
         <Button variant="ghost" onClick={onExit} aria-label="Exit">
           Exit
@@ -115,7 +130,7 @@ export function MatchMode({ cards, onExit }: MatchModeProps) {
             <Button onClick={onExit}>Back to set</Button>
           </motion.div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-3xl mx-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-[clamp(0.5rem,2vw,0.75rem)] max-w-3xl mx-auto">
             {tiles.map((tile, i) => (
               <MatchTile
                 key={`${tile.cardId}-${tile.type}-${i}`}
@@ -124,7 +139,9 @@ export function MatchMode({ cards, onExit }: MatchModeProps) {
                 type={tile.type}
                 tileIndex={i}
                 matched={matchedTiles.has(i)}
+                selected={selectedTile?.tileIndex === i}
                 onDrop={handleDrop}
+                onSelect={handleSelect}
               />
             ))}
           </div>

@@ -24,9 +24,20 @@ interface SpinnerModeProps {
   onExit: () => void;
 }
 
+// Use HSL-based palette derived from the primary brand color for theme consistency
 const SEGMENT_COLORS = [
-  '#6366f1', '#ec4899', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444',
-  '#06b6d4', '#f97316', '#14b8a6', '#a855f7', '#3b82f6', '#84cc16',
+  'hsl(239, 84%, 67%)', // primary-like indigo
+  'hsl(330, 81%, 60%)', // pink
+  'hsl(38, 92%, 50%)',  // amber
+  'hsl(160, 84%, 39%)', // emerald
+  'hsl(263, 70%, 50%)', // violet
+  'hsl(0, 84%, 60%)',   // red
+  'hsl(187, 96%, 42%)', // cyan
+  'hsl(25, 95%, 53%)',  // orange
+  'hsl(168, 78%, 41%)', // teal
+  'hsl(271, 91%, 65%)', // purple
+  'hsl(217, 91%, 60%)', // blue
+  'hsl(84, 81%, 44%)',  // lime
 ];
 
 /**

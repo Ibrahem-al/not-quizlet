@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import Fuse from 'fuse.js';
 import { Search, Download, Upload, MoreVertical, BarChart3, BookOpen, Layers, Trash2, Moon, Sun, Languages } from 'lucide-react';
 import { Card, Button } from '../components/ui';
@@ -249,8 +250,14 @@ export function HomePage() {
         )
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2">
-          {filteredSets.map((set) => (
-            <li key={set.id} className="group">
+          {filteredSets.map((set, index) => (
+            <motion.li
+              key={set.id}
+              className="group"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: Math.min(index * 0.05, 0.4), ease: [0.33, 1, 0.68, 1] }}
+            >
               <Card className="h-full relative">
                 <Link to={`/sets/${set.id}`} className="block h-full">
                   <div className="flex items-start justify-between gap-3">
@@ -304,7 +311,7 @@ export function HomePage() {
                   <Trash2 className="w-4 h-4" />
                 </button>
               </Card>
-            </li>
+            </motion.li>
           ))}
         </ul>
       )}

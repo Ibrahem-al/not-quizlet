@@ -4,7 +4,7 @@
  * Keyboard: Enter, Tab, Escape, Backspace.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { motion } from 'framer-motion';
 import { GripVertical, ImagePlus, Sparkles, Trash2 } from 'lucide-react';
@@ -38,7 +38,7 @@ interface EditableCardProps {
   validationErrors?: ValidationError[];
 }
 
-export function EditableCard({
+export const EditableCard = memo(function EditableCard({
   card,
   pattern,
   canSuggest,
@@ -315,4 +315,4 @@ export function EditableCard({
       />
     </motion.li>
   );
-}
+});

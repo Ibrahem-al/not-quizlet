@@ -18,6 +18,11 @@ export function SignUpPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
+
+  const emailError = emailTouched && email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'Enter a valid email address' : undefined;
+  const confirmError = confirmTouched && confirmPassword && !passwordsMatch(password, confirmPassword) ? t('passwordsDontMatch') : undefined;
   const signUp = useAuthStore((s) => s.signUp);
   const showToast = useToastStore((s) => s.show);
   const navigate = useNavigate();
@@ -73,6 +78,8 @@ export function SignUpPage() {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setEmailTouched(true)}
+            error={emailError}
             required
             autoComplete="email"
             icon={<Mail className="w-4 h-4" />}
@@ -93,7 +100,7 @@ export function SignUpPage() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-[34px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text)] transition-colors"
+              className="absolute right-3 top-[2.35rem] text-[var(--color-text-tertiary)] hover:text-[var(--color-text)] transition-colors"
               tabIndex={-1}
             >
               {showPassword ? (
@@ -115,6 +122,8 @@ export function SignUpPage() {
               placeholder={t('confirmPassword')}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              onBlur={() => setConfirmTouched(true)}
+              error={confirmError}
               required
               autoComplete="new-password"
               icon={<Lock className="w-4 h-4" />}
@@ -122,7 +131,7 @@ export function SignUpPage() {
             <button
               type="button"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              className="absolute right-3 top-[34px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text)] transition-colors"
+              className="absolute right-3 top-[2.35rem] text-[var(--color-text-tertiary)] hover:text-[var(--color-text)] transition-colors"
               tabIndex={-1}
             >
               {showConfirmPassword ? (
@@ -132,21 +141,6 @@ export function SignUpPage() {
               )}
             </button>
           </div>
-
-          {/* Password Match Indicator */}
-          {confirmPassword && (
-            <div className="flex items-center gap-2 text-sm">
-              {passwordsMatch(password, confirmPassword) ? (
-                <span className="text-[var(--color-success)]">
-                  {t('passwordsMatch')}
-                </span>
-              ) : (
-                <span className="text-[var(--color-danger)]">
-                  {t('passwordsDontMatch')}
-                </span>
-              )}
-            </div>
-          )}
 
           {/* Validation Errors */}
           {validationErrors.length > 0 && (

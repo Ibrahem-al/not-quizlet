@@ -15,7 +15,9 @@ interface MatchTileProps {
   type: 'term' | 'definition';
   tileIndex: number;
   matched: boolean;
+  selected?: boolean;
   onDrop?: (dragged: MatchTileData, target: MatchTileData) => void;
+  onSelect?: (tile: MatchTileData) => void;
   draggable?: boolean;
 }
 
@@ -25,11 +27,15 @@ export function MatchTile({
   type,
   tileIndex,
   matched,
+  selected = false,
   onDrop,
+  onSelect,
   draggable = true,
 }: MatchTileProps) {
+  const tileData: MatchTileData = { cardId, text, type, tileIndex };
+
   const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData('application/json', JSON.stringify({ cardId, text, type, tileIndex }));
+    e.dataTransfer.setData('application/json', JSON.stringify(tileData));
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -38,7 +44,7 @@ export function MatchTile({
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json')) as MatchTileData;
       if (data.tileIndex === tileIndex) return; // same tile
-      onDrop?.(data, { cardId, text, type, tileIndex });
+      onDrop?.(data, tileData);
     } catch {
       // ignore
     }
@@ -49,6 +55,17 @@ export function MatchTile({
     e.dataTransfer.dropEffect = 'move';
   };
 
+  const handleClick = () => {
+    onSelect?.(tileData);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect?.(tileData);
+    }
+  };
+
   if (matched) {
     return (
       <motion.div
@@ -56,17 +73,28 @@ export function MatchTile({
         initial={{ scale: 1.2, opacity: 1 }}
         animate={{ scale: 0, opacity: 0 }}
         transition={spring}
+        aria-hidden="true"
       />
     );
   }
 
   return (
     <div
-      className="rounded-lg bg-[var(--color-surface)] border-2 border-[var(--color-text-secondary)]/30 p-3 min-h-[60px] flex items-center justify-center cursor-grab active:cursor-grabbing shadow-[var(--shadow-card)]"
+      className={`rounded-lg bg-[var(--color-surface)] border-2 p-3 min-h-[60px] flex items-center justify-center cursor-grab active:cursor-grabbing shadow-[var(--shadow-card)] transition-colors ${
+        selected
+          ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30'
+          : 'border-[var(--color-text-secondary)]/30'
+      }`}
       draggable={draggable}
       onDragStart={handleDragStart}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      role="button"
+      aria-pressed={selected}
+      aria-label={`${type === 'term' ? 'Term' : 'Definition'} tile`}
     >
       <motion.div
         className={`text-base text-[var(--color-text)] text-center study-content ${
