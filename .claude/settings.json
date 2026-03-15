@@ -10,7 +10,11 @@
       "Bash(find /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src -name *Mode.tsx)",
       "Bash(grep -r \"React.memo\\\\|memo\\(\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src/components --include=*.tsx)",
       "Bash(grep -r \"cache\\\\|Cache\\\\|persist\\\\|Persist\\\\|IndexedDB\\\\|dexie\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src --include=*.ts --include=*.tsx)",
-      "Bash(grep -r \"dangerouslySetInnerHTML\\\\|innerHTML\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src/components --include=*.tsx)"
+      "Bash(grep -r \"dangerouslySetInnerHTML\\\\|innerHTML\" /c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/src/components --include=*.tsx)",
+      "mcp__claude_ai_Vercel__list_teams",
+      "mcp__claude_ai_Vercel__list_projects",
+      "mcp__claude_ai_Vercel__list_deployments",
+      "mcp__claude_ai_Vercel__get_deployment_build_logs"
     ]
   }
 }
