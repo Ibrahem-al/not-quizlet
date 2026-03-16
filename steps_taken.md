@@ -1434,3 +1434,80 @@ Analyzed 12 available skills in `.claude/skills/` and applied 8 that addressed r
   - Removed redundant standalone password match indicator section (now handled inline via Input's error prop)
   - Fixed password toggle positioning from magic `top-[34px]` to `top-[2.35rem]`
 - **`src/pages/SignInPage.tsx`** — Fixed password toggle positioning from `top-[34px]` to `top-[2.35rem]`
+
+---
+
+## Performance Optimization — Large Sets with Images
+
+### Problem
+The app felt slow when users had large flashcard sets (200+ cards) with images. Root cause: every card mounted 2 TipTap/ProseMirror editor instances on render, and all cards rendered at once with no pagination. A set with 200 cards = 400 ProseMirror editors in the DOM simultaneously. Base64 images (up to 500KB each) compounded the problem.
+
+### Phase 1: Deferred TipTap Editors (Biggest Impact)
+
+Non-focused cards now render lightweight static HTML previews instead of full TipTap editors. Only the focused card mounts TipTap. 200 cards = 2 editors instead of 400.
+
+#### Files Changed
+- **`src/components/inline/EditableCard.tsx`** — Split into `ActiveEditors` (mounts TipTap when editing) and `StaticContent`/`StaticPane` (renders HTML preview when not editing). Focus/blur events on the `<li>` toggle `isEditing` state. Replaced `<motion.li layout>` with plain `<li>` to remove Framer Motion layout tracking overhead.
+- **`src/components/editor/CardEditor.tsx`** — Split into `ActiveCardEditor` (TipTap editors, only when `isActive`) and `StaticCardContent` (HTML preview). Main `CardEditor` export conditionally renders one or the other. Replaced `<motion.div layout>` with plain `<div>` + CSS transitions.
+
+### Phase 2: Pagination in SetDetailPage
+
+#### Files Changed
+- **`src/pages/SetDetailPage.tsx`** — Added `visibleCount` state (starts at 20). Cards rendered via `cards.slice(0, visibleCount).map(...)`. "Show more cards" button increments by 20. Auto-expands when `handleAddCard` inserts beyond visible range.
+
+### Phase 3: Pagination in EditorStream
+
+#### Files Changed
+- **`src/components/editor/EditorStream.tsx`** — Added `CARDS_PER_PAGE = 20` with page-based pagination. Prev/Next navigation controls. Drag-and-drop works within each page. Auto-navigates to correct page when active card changes.
+
+### Phase 4: Memoization & Animation Cleanup
+
+#### Files Changed
+- **`src/components/editor/EditorStream.tsx`** — Wrapped `SortableCard` in `React.memo`. Replaced `motion.div` with CSS class (`rotate-1 scale-[1.02]` on drag). Replaced `motion.button` with plain button. Stabilized `onBlur` with module-level `noop` constant. Memoized `getDuplicateTermCardIds` with `useMemo`.
+- **`src/components/inline/EditableCard.tsx`** — Memoized `stripHtml` calls with `useMemo`. Merged redundant `imageModalOpen` + `imageTarget` state into single `imageTarget` (null = closed).
+
+### Phase 5: Lazy Image Loading
+
+#### Files Changed
+- **`src/lib/editorExtensions.ts`** — Added `loading: 'lazy'` to TipTap Image extension's HTML attributes.
+- **`src/lib/contentHelpers.ts`** — Added shared `addLazyLoading(html)` helper that injects `loading="lazy"` on `<img>` tags.
+- **`src/components/inline/EditableCard.tsx`** and **`src/components/editor/CardEditor.tsx`** — Static previews use `addLazyLoading` for lazy image decoding.
+
+---
+
+## Bug Fix — Data Loss on Editor Unmount
+
+### Problem
+The deferred TipTap editor optimization could lose card content when editors unmount. When a user types and clicks away, the 300ms blur timeout destroys the editors, but TipTap's `onUpdate` callback may not have propagated the latest content to parent state yet. Cards with images were most affected.
+
+### Fix
+
+#### Files Changed
+- **`src/components/inline/EditableCard.tsx`** — Added flush-on-unmount effect in `ActiveEditors`: reads final HTML from both editors via refs and calls `onUpdate` before TipTap destroys them. Uses `useRef` for `onUpdate` to avoid stale closures. Also fixed orphaned blur timeouts (clear previous timeout before scheduling new one). Added cleanup for AI badge timeout.
+- **`src/components/editor/CardEditor.tsx`** — Same flush-on-unmount pattern in `ActiveCardEditor`: reads final editor HTML and calls `updateCard` on unmount via refs.
+- **`src/pages/SetDetailPage.tsx`** — Added `beforeunload` handler and unmount cleanup that calls `debouncedSave.flush()`, ensuring the 5-second debounced save fires immediately when the user navigates away or closes the tab.
+
+---
+
+## Bug Fix — Supabase Timeout Hanging the App
+
+### Problem
+When the Supabase database becomes unresponsive (connection timeout), all cloud operations hang indefinitely. The `loadSets` function awaits `fetchUserSets()` which never resolves, so `loaded` never becomes `true` and the app shows nothing. JSON backup import also hung because `replaceSet` → `syncSetToCloud` hangs.
+
+### Fix
+
+#### Files Changed
+- **`src/lib/cloudSync.ts`** — Added `withTimeout(promise, ms)` helper that wraps any `PromiseLike` with a 10-second timeout via `Promise.race`. Applied to all Supabase calls: `fetchUserSets`, `fetchPublicSets`, `fetchSetById`, `fetchSetByToken`, `syncSetToCloud`, `deleteSetFromCloud`. When the DB is unresponsive, calls now reject after 10s instead of hanging forever, allowing the app to fall back to local IndexedDB data.
+
+---
+
+## Bug Fix — Image-Only Card Sides Showing as Empty
+
+### Problem
+Card sides containing only images (no text) appeared empty in the static preview. The `StaticPane` component used `stripHtml(html).trim() === ''` to detect empty content, but `stripHtml` removes all HTML tags including `<img>`, so image-only content was treated as empty and showed a placeholder instead.
+
+### Fix
+
+#### Files Changed
+- **`src/components/inline/EditableCard.tsx`** — Changed empty check in `StaticPane` to `stripHtml(html).trim() === '' && !html.includes('<img')` so image-only content renders correctly.
+- **`src/components/editor/CardEditor.tsx`** — Same fix in `StaticCardContent` for both `termEmpty` and `defEmpty` checks.

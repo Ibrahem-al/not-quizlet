@@ -495,6 +495,7 @@ export const EditableCard = memo(function EditableCard({
   return (
     <li
       ref={cardRef}
+      data-card-index={cardIndex}
       onFocusCapture={handleCardFocus}
       onBlurCapture={handleCardBlur}
       className={`group/card relative rounded-[var(--radius-card)] border ${hasErrors ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] shadow-[var(--shadow-sm)] hover:border-[var(--color-text-secondary)]/25 focus-within:border-[var(--color-border-focus)] focus-within:ring-1 focus-within:ring-[var(--color-primary)]/20 transition-colors duration-[var(--duration-fast)]`}

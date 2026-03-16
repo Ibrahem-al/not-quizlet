@@ -158,6 +158,8 @@ export function SetDetailPage() {
     debouncedSave();
   }, [debouncedSave]);
 
+  const scrollToCardRef = useRef<number | null>(null);
+
   const handleAddCard = useCallback((atIndex?: number) => {
     const newCard = defaultCard();
     setLocalSet((prev) => {
@@ -172,8 +174,25 @@ export function SetDetailPage() {
     const insertIndex = atIndex ?? localSetRef.current?.cards.length ?? 0;
     setFocusedCardIndex(insertIndex);
     // Auto-expand visible cards if inserting beyond current view
-    setVisibleCount((prev) => Math.max(prev, insertIndex + 1));
+    setVisibleCount((prev) => {
+      if (insertIndex < prev) return prev; // already visible
+      return insertIndex + 1;
+    });
+    // Schedule scroll after React renders the new card
+    scrollToCardRef.current = insertIndex;
   }, [debouncedSave]);
+
+  // Scroll to newly added card after it renders
+  useEffect(() => {
+    if (scrollToCardRef.current !== null) {
+      const idx = scrollToCardRef.current;
+      scrollToCardRef.current = null;
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-card-index="${idx}"]`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+  }, [focusedCardIndex]);
 
   const handleDeleteCard = useCallback((cardId: string) => {
     setLocalSet((prev) => {

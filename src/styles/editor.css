@@ -49,7 +49,8 @@
   opacity: 0.4;
 }
 
-.ProseMirror.studio-editor img {
+.ProseMirror.studio-editor img,
+.studio-editor.study-content img {
   max-width: 120px;
   max-height: 80px;
   height: auto;
@@ -331,7 +332,8 @@
   opacity: 0.4;
 }
 
-.ProseMirror.inline-editor img {
+.ProseMirror.inline-editor img,
+.inline-editor.study-content img {
   max-width: 100px;
   max-height: 64px;
   height: auto;

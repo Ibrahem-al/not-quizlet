@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { shuffle } from '../../../../lib/algorithms';
 import { buildEquivalenceGroups, areMatchableByContent } from '../../../../lib/equivalence';
+import { isImageOnly } from '../../../../lib/contentHelpers';
 import type { Card } from '../../../../types';
 import type { MemoryTile, MemoryGameState } from './types';
 
@@ -64,11 +65,16 @@ export function useMemoryCardFlip(cards: Card[]) {
       const [firstIdx, secondIdx] = newFlipped;
       const first = prev.tiles[firstIdx];
       const second = prev.tiles[secondIdx];
-      // Content-based matching: must be different types (term vs definition)
-      // and content must be matchable via equivalence groups
+      // Must be different types (term vs definition) to be a valid match
+      // Use content-based matching for text cards, fall back to cardId for image-only sides
       const termTile = first.type === 'term' ? first : second;
       const defTile = first.type === 'definition' ? first : second;
-      const isMatch = first.type !== second.type && areMatchableByContent(termTile.content, defTile.content, groups);
+      const hasImageOnlySide = isImageOnly(termTile.content) || isImageOnly(defTile.content);
+      const isMatch = first.type !== second.type && (
+        hasImageOnlySide
+          ? first.cardId === second.cardId
+          : areMatchableByContent(termTile.content, defTile.content, groups)
+      );
       const newMoves = prev.moves + 1;
 
       if (isMatch) {
