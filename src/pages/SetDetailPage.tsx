@@ -135,6 +135,19 @@ export function SetDetailPage() {
     });
   }, 5000);
 
+  // Flush pending saves on navigation away or tab close to prevent data loss
+  useEffect(() => {
+    const flushOnUnload = () => {
+      debouncedSave.flush();
+    };
+    window.addEventListener('beforeunload', flushOnUnload);
+    return () => {
+      window.removeEventListener('beforeunload', flushOnUnload);
+      // Also flush when component unmounts (e.g., navigating to another route)
+      debouncedSave.flush();
+    };
+  }, [debouncedSave]);
+
   const applyCardUpdate = useCallback((cardId: string, updates: Partial<CardType>) => {
     setLocalSet((prev) => {
       if (!prev) return prev;

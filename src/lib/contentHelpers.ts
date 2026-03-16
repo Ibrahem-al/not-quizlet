@@ -29,6 +29,11 @@ export function hasTextContent(content: string): boolean {
   return getTextContent(content).length > 0;
 }
 
+/** Inject loading="lazy" on img tags that don't already have it. */
+export function addLazyLoading(html: string): string {
+  return html.replace(/<img(?!\s+loading=)/g, '<img loading="lazy"');
+}
+
 /**
  * Select cards for the requested question count, repeating evenly when
  * questionCount exceeds the number of available cards.

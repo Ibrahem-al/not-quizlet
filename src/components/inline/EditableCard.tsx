@@ -7,7 +7,7 @@
  * Non-focused cards render lightweight static HTML previews instead.
  */
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { GripVertical, ImagePlus, Sparkles, Trash2 } from 'lucide-react';
 import { useDebouncedCallback } from 'use-debounce';
@@ -15,6 +15,7 @@ import { getEditorExtensions } from '../../lib/editorExtensions';
 import type { SetPattern } from '../../lib/ContextAnalyzer';
 import { getAIGenerator } from '../../lib/ai';
 import { stripHtml, type ValidationError } from '../../lib/validation';
+import { addLazyLoading } from '../../lib/contentHelpers';
 import type { Card } from '../../types';
 import { ImageSearchModal } from '../editor/ImageSearchModal';
 import { DiacriticsToolbar } from '../editor/DiacriticsToolbar';
@@ -23,11 +24,6 @@ import '../../styles/editor.css';
 
 const TERM_PLACEHOLDER = 'Ask a question...';
 const DEF_PLACEHOLDER = 'Definition or translation...';
-
-/** Inject loading="lazy" on img tags for static preview */
-function addLazyLoading(html: string): string {
-  return html.replace(/<img(?!\s+loading=)/g, '<img loading="lazy"');
-}
 
 interface EditableCardProps {
   card: Card;
@@ -47,7 +43,8 @@ interface EditableCardProps {
 /* ─── Static content for a single pane ─── */
 
 function StaticPane({ html, placeholder, hasErrors }: { html: string; placeholder: string; hasErrors: boolean }) {
-  const isEmpty = !html || stripHtml(html).trim() === '';
+  const isEmpty = !html || (stripHtml(html).trim() === '' && !html.includes('<img'));
+  const lazyHtml = useMemo(() => isEmpty ? '' : addLazyLoading(html), [html, isEmpty]);
   return (
     <div className={`min-h-[36px] rounded-[var(--radius-button)] border ${hasErrors ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'} bg-[var(--color-surface)] px-2.5 py-1.5 cursor-text transition-colors duration-[var(--duration-fast)]`}>
       {isEmpty ? (
@@ -55,7 +52,7 @@ function StaticPane({ html, placeholder, hasErrors }: { html: string; placeholde
       ) : (
         <div
           className="inline-editor study-content"
-          dangerouslySetInnerHTML={{ __html: addLazyLoading(html) }}
+          dangerouslySetInnerHTML={{ __html: lazyHtml }}
         />
       )}
     </div>
@@ -99,6 +96,9 @@ function ActiveEditors({
 }: ActiveEditorsProps) {
   const syncTerm = useCallback((html: string) => onUpdate({ term: html }), [onUpdate]);
   const syncDef = useCallback((html: string) => onUpdate({ definition: html }), [onUpdate]);
+  // Refs to hold latest values for flush-on-unmount (avoids stale closures in cleanup)
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
 
   const termEditor = useEditor({
     extensions: getEditorExtensions(TERM_PLACEHOLDER),
@@ -119,9 +119,32 @@ function ActiveEditors({
     editorProps: { attributes: { class: 'inline-editor' } },
   }, [card.id]);
 
-  // Expose editors to parent for image insertion
+  // Keep editor refs up to date for flush-on-unmount
+  const termEditorRef = useRef(termEditor);
+  termEditorRef.current = termEditor;
+  const defEditorRef = useRef(defEditor);
+  defEditorRef.current = defEditor;
+
+  // CRITICAL: Flush editor content to parent state before unmounting.
+  // This prevents data loss when the user clicks away and editors are destroyed.
+  useEffect(() => {
+    return () => {
+      const term = termEditorRef.current;
+      const def = defEditorRef.current;
+      if (!term && !def) return;
+      const updates: Partial<Card> = {};
+      if (term && !term.isDestroyed) updates.term = term.getHTML();
+      if (def && !def.isDestroyed) updates.definition = def.getHTML();
+      if (updates.term !== undefined || updates.definition !== undefined) {
+        onUpdateRef.current(updates);
+      }
+    };
+  }, []); // Empty deps: runs cleanup only on unmount
+
+  // Expose editors to parent for image insertion; clean up on unmount
   useEffect(() => {
     editorRefsCallback(termEditor, defEditor);
+    return () => editorRefsCallback(null, null);
   }, [termEditor, defEditor, editorRefsCallback]);
 
   // Sync content from parent if it changes externally
@@ -364,13 +387,13 @@ export const EditableCard = memo(function EditableCard({
   validationErrors = [],
 }: EditableCardProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageTarget, setImageTarget] = useState<'term' | 'definition' | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [showAiBadge, setShowAiBadge] = useState(false);
   const cardRef = useRef<HTMLLIElement>(null);
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiBadgeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const termEditorRef = useRef<ReturnType<typeof useEditor> | null>(null);
   const defEditorRef = useRef<ReturnType<typeof useEditor> | null>(null);
 
@@ -385,6 +408,8 @@ export const EditableCard = memo(function EditableCard({
 
   // Handle blur: unmount editors after delay if focus leaves the card entirely
   const handleCardBlur = useCallback(() => {
+    // Clear any previous blur timeout to avoid orphaned timers
+    if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
     blurTimeoutRef.current = setTimeout(() => {
       if (cardRef.current && !cardRef.current.contains(document.activeElement)) {
         setIsEditing(false);
@@ -400,15 +425,16 @@ export const EditableCard = memo(function EditableCard({
     setIsEditing(true);
   }, []);
 
+  // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
       if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+      if (aiBadgeTimeoutRef.current) clearTimeout(aiBadgeTimeoutRef.current);
     };
   }, []);
 
   const openImageModal = useCallback((target: 'term' | 'definition') => {
     setImageTarget(target);
-    setImageModalOpen(true);
   }, []);
 
   const hasErrors = validationErrors.length > 0;
@@ -416,8 +442,8 @@ export const EditableCard = memo(function EditableCard({
   const termErrors = hardErrors.filter(e => !e.field || e.field === 'term' || e.code === 'EMPTY_TERM_CONTENT');
   const defErrors = hardErrors.filter(e => e.field === 'definition' || e.code === 'EMPTY_DEFINITION_CONTENT');
 
-  const termPlain = stripHtml(card.term).trim();
-  const defPlain = stripHtml(card.definition).trim();
+  const termPlain = useMemo(() => stripHtml(card.term).trim(), [card.term]);
+  const defPlain = useMemo(() => stripHtml(card.definition).trim(), [card.definition]);
   const defEmpty = defPlain.length === 0;
 
   const fetchSuggestion = useDebouncedCallback(async () => {
@@ -430,7 +456,8 @@ export const EditableCard = memo(function EditableCard({
       if (result && defPlain === '') {
         setAiSuggestion(result);
         setShowAiBadge(true);
-        setTimeout(() => setShowAiBadge(false), 2000);
+        if (aiBadgeTimeoutRef.current) clearTimeout(aiBadgeTimeoutRef.current);
+        aiBadgeTimeoutRef.current = setTimeout(() => setShowAiBadge(false), 2000);
       }
     } catch {
       setAiSuggestion('');
@@ -462,7 +489,6 @@ export const EditableCard = memo(function EditableCard({
         onUpdate({ definition: (card.definition || '<p></p>').replace(/<\/p>$/, `<img src="${base64}" alt="" /></p>`) });
       }
     }
-    setImageModalOpen(false);
     setImageTarget(null);
   }, [imageTarget, card.term, card.definition, onUpdate]);
 
@@ -543,23 +569,18 @@ export const EditableCard = memo(function EditableCard({
       {/* Validation errors */}
       {hardErrors.length > 0 && (
         <div className="px-3 py-2 bg-[var(--color-danger)]/5 border-t border-[var(--color-danger)]/20">
-          <div className="flex flex-col gap-1">
-            {hardErrors.map((error, idx) => (
-              <span key={idx} className="text-xs text-[var(--color-danger)]">
-                {error.message}
-              </span>
-            ))}
-          </div>
+          {hardErrors.map((error, idx) => (
+            <span key={idx} className="text-xs text-[var(--color-danger)] block">
+              {error.message}
+            </span>
+          ))}
         </div>
       )}
 
-      {/* Image search modal */}
+      {/* Image search modal - imageTarget !== null means open */}
       <ImageSearchModal
-        open={imageModalOpen}
-        onClose={() => {
-          setImageModalOpen(false);
-          setImageTarget(null);
-        }}
+        open={imageTarget !== null}
+        onClose={() => setImageTarget(null)}
         onSelect={handleImageSelect}
         initialQuery={sanitizeSearchQuery(card.term || '')}
       />

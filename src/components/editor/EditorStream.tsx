@@ -2,7 +2,7 @@
  * Vertical stream of sortable cards with keyboard nav, pagination, and ghost "add card" button.
  */
 
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   type DragEndEvent,
@@ -23,6 +23,7 @@ import { CardEditor } from './CardEditor';
 import type { Card } from '../../types';
 
 const CARDS_PER_PAGE = 20;
+const noop = () => {};
 
 const SortableCard = memo(function SortableCard({
   card,
@@ -103,12 +104,15 @@ export function EditorStream({
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
-  // Pagination state
+  // Pagination: use derived clampedPage instead of setState during render
   const totalPages = Math.max(1, Math.ceil(cards.length / CARDS_PER_PAGE));
   const [page, setPage] = useState(0);
-  // Clamp page if cards are deleted
   const clampedPage = Math.min(page, totalPages - 1);
-  if (clampedPage !== page) setPage(clampedPage);
+
+  // Sync clamped page back to state via effect (not during render)
+  useEffect(() => {
+    if (clampedPage !== page) setPage(clampedPage);
+  }, [clampedPage, page]);
 
   const pageStart = clampedPage * CARDS_PER_PAGE;
   const pageEnd = Math.min(pageStart + CARDS_PER_PAGE, cards.length);
@@ -130,6 +134,12 @@ export function EditorStream({
     }
   }, [activeCardIndex, cards.length, clampedPage]);
 
+  // Memoize duplicate detection (O(n) operation)
+  const duplicateTermIds = useMemo(
+    () => set ? getDuplicateTermCardIds(set) : new Set<string>(),
+    [set]
+  );
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
@@ -140,6 +150,11 @@ export function EditorStream({
     },
     [cards, reorderCards]
   );
+
+  // Stable onFocus callback factory to avoid breaking memo
+  const handleFocus = useCallback((index: number) => {
+    onActiveCardChange(index);
+  }, [onActiveCardChange]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -182,7 +197,6 @@ export function EditorStream({
             const nextIndex = activeCardIndex + 1;
             onActiveCardChange(nextIndex);
             navigateToCard(nextIndex);
-            // Focus will happen after page change via CardEditor's isActive
           } else {
             const lastCard = cards[cards.length - 1];
             if (lastCard && !hasContent(lastCard)) {
@@ -201,11 +215,9 @@ export function EditorStream({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activeCardIndex, cards.length, addCard, deleteCard, onActiveCardChange, editorRef, pageStart, navigateToCard]);
+  }, [activeCardIndex, cards, addCard, deleteCard, onActiveCardChange, editorRef, pageStart, navigateToCard, onRequestImageModal]);
 
   if (!set) return null;
-
-  const duplicateTermIds = getDuplicateTermCardIds(set);
 
   if (cards.length === 0) {
     return (
@@ -274,8 +286,8 @@ export function EditorStream({
                 index={globalIndex}
                 isActive={activeCardIndex === globalIndex}
                 isDuplicateTerm={duplicateTermIds.has(card.id)}
-                onFocus={() => onActiveCardChange(globalIndex)}
-                onBlur={() => {}}
+                onFocus={() => handleFocus(globalIndex)}
+                onBlur={noop}
                 triggerImageModal={triggerImageModal}
                 onImageModalTriggered={onImageModalTriggered}
               />

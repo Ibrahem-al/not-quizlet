@@ -15,7 +15,21 @@
       "mcp__claude_ai_Vercel__list_projects",
       "mcp__claude_ai_Vercel__list_deployments",
       "mcp__claude_ai_Vercel__get_deployment_build_logs",
-      "mcp__claude_ai_Vercel__get_project"
+      "mcp__claude_ai_Vercel__get_project",
+      "Read(//tmp/**)",
+      "Read(//c/tmp/**)",
+      "Read(//c//**)",
+      "Bash(ls /tmp/perf_diff*)",
+      "Read(//c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/$TEMP/**)",
+      "Read(//c/Users/ibrah/OneDrive/Documents/Cursor/not_quizlet/$USERPROFILE/**)",
+      "WebFetch(domain:localhost)",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "mcp__claude_ai_Supabase__get_project",
+      "mcp__claude_ai_Supabase__get_project_url",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 10 \"https://mubejvlhmpnfukmxgaxv.supabase.co/rest/v1/\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im11YmVqdmxobXBuZnVrbXhnYXh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTkzNjcsImV4cCI6MjA4Nzk3NTM2N30.O0KAhXVJqOJ4xz3MBSVvS4PKdvWnOXrkCcUO70hp6v4\")",
+      "Bash(curl -s --max-time 15 \"https://mubejvlhmpnfukmxgaxv.supabase.co\")",
+      "mcp__claude_ai_Supabase__restore_project",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 30 \"https://mubejvlhmpnfukmxgaxv.supabase.co/rest/v1/study_sets?select=id&limit=1\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im11YmVqdmxobXBuZnVrbXhnYXh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTkzNjcsImV4cCI6MjA4Nzk3NTM2N30.O0KAhXVJqOJ4xz3MBSVvS4PKdvWnOXrkCcUO70hp6v4\")"
     ]
   }
 }

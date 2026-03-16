@@ -66,11 +66,10 @@ function fromRow(row: StudySetRow): StudySet {
 
 export async function fetchUserSets(userId: string): Promise<StudySet[]> {
   if (!isSupabaseConfigured() || !supabase) return [];
-  const { data, error } = await supabase
-    .from('study_sets')
-    .select('*')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false });
+  const { data, error } = await withTimeout(
+    supabase.from('study_sets').select('*').eq('user_id', userId).order('updated_at', { ascending: false }),
+    10000
+  );
   if (error) throw error;
   return (data ?? []).map((r) => fromRow(r as StudySetRow));
 }
@@ -115,24 +114,33 @@ function fromPublicRow(row: PublicSetRow): StudySet {
 export async function fetchPublicSets(): Promise<StudySet[]> {
   if (!isSupabaseConfigured() || !supabase) return [];
   // Use the lightweight RPC that returns card_count instead of full cards JSONB
-  const { data, error } = await supabase.rpc('get_public_sets');
+  const { data, error } = await withTimeout(supabase.rpc('get_public_sets'), 10000);
   if (error) throw error;
   return ((data ?? []) as PublicSetRow[]).map((r) => fromPublicRow(r));
 }
 
 export async function fetchSetById(setId: string): Promise<StudySet | null> {
   if (!isSupabaseConfigured() || !supabase) return null;
-  const { data, error } = await supabase
-    .from('study_sets')
-    .select('*')
-    .eq('id', setId)
-    .maybeSingle();
+  const { data, error } = await withTimeout(
+    supabase.from('study_sets').select('*').eq('id', setId).maybeSingle(),
+    10000
+  );
   if (error) {
     console.warn('[cloudSync] fetchSetById failed:', error.message);
     return null;
   }
   if (!data) return null;
   return fromRow(data as StudySetRow);
+}
+
+/** Rejects after `ms` milliseconds to prevent hanging on unresponsive DB. */
+function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Supabase request timeout')), ms)
+    ),
+  ]);
 }
 
 export async function syncSetToCloud(set: StudySet, userId: string): Promise<void> {
@@ -142,9 +150,10 @@ export async function syncSetToCloud(set: StudySet, userId: string): Promise<voi
   if (lastSyncedAt.get(set.id) === set.updatedAt) return;
 
   const row = toRow(set, userId);
-  const { error } = await supabase.from('study_sets').upsert(row, {
-    onConflict: 'id',
-  });
+  const { error } = await withTimeout(
+    supabase.from('study_sets').upsert(row, { onConflict: 'id' }),
+    10000
+  );
   if (error) throw error;
 
   lastSyncedAt.set(set.id, set.updatedAt);
@@ -152,9 +161,10 @@ export async function syncSetToCloud(set: StudySet, userId: string): Promise<voi
 
 export async function fetchSetByToken(token: string): Promise<StudySet | null> {
   if (!isSupabaseConfigured() || !supabase) return null;
-  const { data, error } = await supabase.rpc('get_set_by_share_token', {
-    p_token: token,
-  });
+  const { data, error } = await withTimeout(
+    supabase.rpc('get_set_by_share_token', { p_token: token }),
+    10000
+  );
   if (error) {
     console.warn('[cloudSync] fetchSetByToken failed:', error.message);
     return null;
@@ -165,7 +175,7 @@ export async function fetchSetByToken(token: string): Promise<StudySet | null> {
 
 export async function deleteSetFromCloud(setId: string): Promise<void> {
   if (!isSupabaseConfigured() || !supabase) return;
-  await supabase.from('study_sets').delete().eq('id', setId);
+  await withTimeout(supabase.from('study_sets').delete().eq('id', setId), 10000);
 }
 
 export { isSupabaseConfigured };

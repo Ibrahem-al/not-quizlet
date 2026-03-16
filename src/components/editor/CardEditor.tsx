@@ -5,13 +5,14 @@
  * Inactive cards render static HTML previews instead of heavyweight ProseMirror instances.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { GripVertical, ImagePlus, AlertTriangle } from 'lucide-react';
 import { getEditorExtensions } from '../../lib/editorExtensions';
 import { sanitizeSearchQuery } from '../../lib/imageSearch';
 import { stripHtml, MAX_TERM_LENGTH, MAX_DEFINITION_LENGTH } from '../../lib/validation';
+import { addLazyLoading } from '../../lib/contentHelpers';
 import { useEditorStore } from '../../stores/editorStore';
 import { useValidationStore } from '../../stores/validationStore';
 import type { Card } from '../../types';
@@ -23,11 +24,6 @@ import '../../styles/editor.css';
 
 const TERM_PLACEHOLDER = 'Enter term...';
 const DEF_PLACEHOLDER = 'Enter definition...';
-
-/** Inject loading="lazy" on img tags for static preview */
-function addLazyLoading(html: string): string {
-  return html.replace(/<img(?!\s+loading=)/g, '<img loading="lazy"');
-}
 
 const defaultLayout = (): number[] => {
   try {
@@ -73,15 +69,20 @@ function StaticCardContent({
   dragHandleProps?: Record<string, unknown>;
   layout: number[];
 }) {
-  const termEmpty = !card.term || card.term.replace(/<[^>]*>/g, '').trim() === '';
+  const termStripped = useMemo(() => stripHtml(card.term), [card.term]);
+  const defStripped = useMemo(() => stripHtml(card.definition), [card.definition]);
+  const termEmpty = termStripped.trim() === '' && !card.term?.includes('<img');
+  const defEmpty = defStripped.trim() === '' && !card.definition?.includes('<img');
+  const termLen = termStripped.length;
+  const defLen = defStripped.length;
   const cardErrors = useValidationStore((s) => s.cardErrors.get(card.id) ?? []);
   const hasHardError = cardErrors.some((e) => e.severity === 'hard');
   const emptyTermError = cardErrors.find((e) => e.code === 'EMPTY_TERM');
-  const termLen = stripHtml(card.term).length;
-  const defLen = stripHtml(card.definition).length;
   const termOverLimit = termLen > MAX_TERM_LENGTH;
   const defOverLimit = defLen > MAX_DEFINITION_LENGTH;
   const status = hasHardError ? 'error' : termEmpty ? 'error' : 'saved';
+  const termLazyHtml = useMemo(() => termEmpty ? '' : addLazyLoading(card.term), [card.term, termEmpty]);
+  const defLazyHtml = useMemo(() => defEmpty ? '' : addLazyLoading(card.definition), [card.definition, defEmpty]);
 
   return (
     <div
@@ -124,7 +125,7 @@ function StaticCardContent({
             ) : (
               <div
                 className="studio-editor study-content"
-                dangerouslySetInnerHTML={{ __html: addLazyLoading(card.term) }}
+                dangerouslySetInnerHTML={{ __html: termLazyHtml }}
               />
             )}
           </div>
@@ -140,12 +141,12 @@ function StaticCardContent({
             </span>
           </div>
           <div className="flex-1 min-h-[100px] px-3 py-2">
-            {stripHtml(card.definition).trim() === '' ? (
+            {defEmpty ? (
               <p className="studio-editor text-[var(--color-text-secondary)]/50 text-sm italic">{DEF_PLACEHOLDER}</p>
             ) : (
               <div
                 className="studio-editor study-content"
-                dangerouslySetInnerHTML={{ __html: addLazyLoading(card.definition) }}
+                dangerouslySetInnerHTML={{ __html: defLazyHtml }}
               />
             )}
           </div>
@@ -197,6 +198,12 @@ function ActiveCardEditor({ card, index, isActive, isDuplicateTerm, onFocus, onB
     [card.id, updateCard]
   );
 
+  // Refs for flush-on-unmount (avoids stale closures in cleanup)
+  const updateCardRef = useRef(updateCard);
+  updateCardRef.current = updateCard;
+  const cardIdRef = useRef(card.id);
+  cardIdRef.current = card.id;
+
   const termEditor = useEditor({
     extensions: getEditorExtensions(TERM_PLACEHOLDER),
     content: card.term || '<p></p>',
@@ -224,6 +231,28 @@ function ActiveCardEditor({ card, index, isActive, isDuplicateTerm, onFocus, onB
     onUpdate: ({ editor }) => syncDef(editor.getHTML()),
     immediatelyRender: false,
   }, [card.id]);
+
+  // Keep editor refs up to date for flush-on-unmount
+  const termEditorLocalRef = useRef(termEditor);
+  termEditorLocalRef.current = termEditor;
+  const defEditorLocalRef = useRef(defEditor);
+  defEditorLocalRef.current = defEditor;
+
+  // CRITICAL: Flush editor content to store before unmounting.
+  // Prevents data loss when isActive changes and this component unmounts.
+  useEffect(() => {
+    return () => {
+      const term = termEditorLocalRef.current;
+      const def = defEditorLocalRef.current;
+      if (!term && !def) return;
+      const updates: Partial<Card> = {};
+      if (term && !term.isDestroyed) updates.term = term.getHTML();
+      if (def && !def.isDestroyed) updates.definition = def.getHTML();
+      if (updates.term !== undefined || updates.definition !== undefined) {
+        updateCardRef.current(cardIdRef.current, updates);
+      }
+    };
+  }, []); // Empty deps: runs cleanup only on unmount
 
   useEffect(() => {
     if (termEditor && card.term !== termEditor.getHTML()) {
