@@ -95,16 +95,20 @@ export function shuffle<T>(array: T[]): T[] {
 /**
  * Grade written answer: case-insensitive, trim, typo tolerance (Levenshtein).
  * Arabic-aware: tolerates missing/extra harakat but penalises wrong ones.
- * Default maxEditDistance 2.
+ * maxEditDistance scales with the length of the correct answer to avoid
+ * accepting clearly wrong answers for short terms (e.g. single-letter terms).
  */
 export function gradeWrittenAnswer(
   correct: string,
   user: string,
-  maxEditDistance = 2
+  maxEditDistance?: number
 ): boolean {
   const c = correct.trim().toLowerCase();
   const u = user.trim().toLowerCase();
   if (c === u) return true;
+
+  // Scale tolerance by answer length: ≤3 chars → 0, 4–6 chars → 1, 7+ → 2
+  const tolerance = maxEditDistance ?? (c.length <= 3 ? 0 : c.length <= 6 ? 1 : 2);
 
   // Arabic-aware path: tolerate missing/extra diacritics, penalise wrong ones
   const arabicPattern = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/;
@@ -113,7 +117,7 @@ export function gradeWrittenAnswer(
     const uStripped = stripArabicDiacritics(u);
 
     // Base text (sans diacritics) must match within typo tolerance
-    if (cStripped !== uStripped && levenshtein(cStripped, uStripped) > maxEditDistance) {
+    if (cStripped !== uStripped && levenshtein(cStripped, uStripped) > tolerance) {
       return false;
     }
 
@@ -126,5 +130,5 @@ export function gradeWrittenAnswer(
     return true;
   }
 
-  return levenshtein(c, u) <= maxEditDistance;
+  return levenshtein(c, u) <= tolerance;
 }
